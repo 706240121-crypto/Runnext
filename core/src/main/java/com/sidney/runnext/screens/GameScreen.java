@@ -41,15 +41,18 @@ public class GameScreen implements Screen {
         viewport = new FitViewport(WORLD_WIDTH, WORLD_HEIGHT, camera);
         shapeRenderer = new ShapeRenderer();
         batch = new SpriteBatch();
+
+        // Fonte para as setas
         font = new BitmapFont();
-        font.getData().setScale(2f);
+        font.getData().setScale(2.5f);
+        font.setColor(Color.BLACK); // Setas pretas para contrastar com o botão branco
 
         ground = new Rectangle(0, 0, WORLD_WIDTH, 40);
         player = new Player(100, ground.y + ground.height + 10);
 
-        // Criar botões de controle (posição na tela)
-        btnLeft = new Rectangle(50, 20, 80, 60);
-        btnRight = new Rectangle(150, 20, 80, 60);
+        // Botões menores e melhor posicionados
+        btnLeft = new Rectangle(30, 15, 60, 50);
+        btnRight = new Rectangle(100, 15, 60, 50);
     }
 
     @Override
@@ -61,6 +64,13 @@ public class GameScreen implements Screen {
     public void render(float delta) {
         handleTouchInput();
         player.update(delta);
+
+        // ✅ IMPEDIR A PERSONAGEM DE SAIR DO ECRÃ (Limites do Mundo)
+        if (player.getX() < 0) {
+            player.setX(0); // Bateu na parede esquerda
+        } else if (player.getX() + Player.WIDTH > WORLD_WIDTH) {
+            player.setX(WORLD_WIDTH - Player.WIDTH); // Bateu na parede direita
+        }
 
         // Colisão com o chão
         Rectangle bounds = player.getBounds();
@@ -86,20 +96,44 @@ public class GameScreen implements Screen {
         // Player
         player.render(shapeRenderer);
 
-        // Botões de controle
-        shapeRenderer.setColor(touchLeft ? Color.GRAY : Color.BLUE);
+        // ✅ Botão ESQUERDA (SEMPRE BRANCO, mesmo ao clicar)
+        shapeRenderer.setColor(Color.WHITE);
         shapeRenderer.rect(btnLeft.x, btnLeft.y, btnLeft.width, btnLeft.height);
 
-        shapeRenderer.setColor(touchRight ? Color.GRAY : Color.BLUE);
+        // Borda do botão esquerdo (cinza claro para se ver o contorno)
+        shapeRenderer.setColor(Color.LIGHT_GRAY);
+        shapeRenderer.rectLine(btnLeft.x, btnLeft.y, btnLeft.x + btnLeft.width, btnLeft.y, 2);
+        shapeRenderer.rectLine(btnLeft.x, btnLeft.y, btnLeft.x, btnLeft.y + btnLeft.height, 2);
+        shapeRenderer.rectLine(btnLeft.x + btnLeft.width, btnLeft.y, btnLeft.x + btnLeft.width, btnLeft.y + btnLeft.height, 2);
+        shapeRenderer.rectLine(btnLeft.x, btnLeft.y + btnLeft.height, btnLeft.x + btnLeft.width, btnLeft.y + btnLeft.height, 2);
+
+        // ✅ Botão DIREITA (SEMPRE BRANCO, mesmo ao clicar)
+        shapeRenderer.setColor(Color.WHITE);
         shapeRenderer.rect(btnRight.x, btnRight.y, btnRight.width, btnRight.height);
+
+        // Borda do botão direito
+        shapeRenderer.setColor(Color.LIGHT_GRAY);
+        shapeRenderer.rectLine(btnRight.x, btnRight.y, btnRight.x + btnRight.width, btnRight.y, 2);
+        shapeRenderer.rectLine(btnRight.x, btnRight.y, btnRight.x, btnRight.y + btnRight.height, 2);
+        shapeRenderer.rectLine(btnRight.x + btnRight.width, btnRight.y, btnRight.x + btnRight.width, btnRight.y + btnRight.height, 2);
+        shapeRenderer.rectLine(btnRight.x, btnRight.y + btnRight.height, btnRight.x + btnRight.width, btnRight.y + btnRight.height, 2);
 
         shapeRenderer.end();
 
-        // Desenhar texto nos botões
+        // Desenhar SETAS (< e >) nos botões
         batch.begin();
-        font.setColor(Color.WHITE);
-        font.draw(batch, "◀", btnLeft.x + 25, btnLeft.y + 40);
-        font.draw(batch, "▶", btnRight.x + 25, btnRight.y + 40);
+        font.setColor(Color.BLACK); // Garantir que a cor é preta
+
+        // Seta ESQUERDA (<)
+        float leftTextX = btnLeft.x + 18;
+        float leftTextY = btnLeft.y + 35;
+        font.draw(batch, "<", leftTextX, leftTextY);
+
+        // Seta DIREITA (>)
+        float rightTextX = btnRight.x + 20;
+        float rightTextY = btnRight.y + 35;
+        font.draw(batch, ">", rightTextX, rightTextY);
+
         batch.end();
     }
 
@@ -109,11 +143,10 @@ public class GameScreen implements Screen {
 
         // Verificar toques na tela
         if (Gdx.input.isTouched()) {
-            // Converter coordenadas do toque para coordenadas do mundo
             float touchX = Gdx.input.getX();
             float touchY = Gdx.input.getY();
 
-            // Inverter Y (o Android tem Y invertido)
+            // Inverter Y (Android tem Y invertido)
             touchY = WORLD_HEIGHT - touchY;
 
             // Verificar se tocou no botão esquerdo
