@@ -100,4 +100,13 @@ public class Player {
 
     public void setMovingLeft(boolean moving) { this.movingLeft = moving; }
     public void setMovingRight(boolean moving) { this.movingRight = moving; }
+
+    // Métodos para controlar a posição Y
+    public float getY() {
+        return y;
+    }
+
+    public void setY(float y) {
+        this.y = y;
+    }
 }

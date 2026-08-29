@@ -75,52 +75,36 @@ public class MenuScreen implements Screen {
     }
 
     private void renderMenuPrincipal(float centroX) {
-        batch.begin();
-
-        // Título: RUNNEXT
-        fontGrande.setColor(Color.WHITE);
-        fontGrande.draw(batch, "RUNNEXT", centroX - 140, 350);
-
-        // Botão: JOGAR
-        fontMedia.setColor(Color.WHITE);
-        fontMedia.draw(batch, "JOGAR", centroX - 60, 200);
-
-        batch.end();
-
         // Retângulo azul atrás do JOGAR (para parecer botão)
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         shapeRenderer.setColor(Color.BLUE);
         shapeRenderer.rect(centroX - 100, 170, 200, 50);
         shapeRenderer.end();
 
-        // Desenhar texto JOGAR por cima do retângulo
         batch.begin();
+        // Título: RUNNEXT
+        fontGrande.setColor(Color.WHITE);
+        fontGrande.draw(batch, "RUNNEXT", centroX - 140, 350);
+
+        // Texto: JOGAR (por cima do retângulo)
         fontMedia.setColor(Color.WHITE);
         fontMedia.draw(batch, "JOGAR", centroX - 60, 200);
         batch.end();
     }
 
     private void renderSelecaoNivel(float centroX) {
-        batch.begin();
-
-        // Título: RUNNEXT
-        fontGrande.setColor(Color.WHITE);
-        fontGrande.draw(batch, "RUNNEXT", centroX - 140, 350);
-
-        // Botão: NIVEL 1
-        fontMedia.setColor(Color.WHITE);
-        fontMedia.draw(batch, "NIVEL 1", centroX - 70, 200);
-
-        batch.end();
-
         // Retângulo azul atrás do NIVEL 1
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         shapeRenderer.setColor(Color.BLUE);
         shapeRenderer.rect(centroX - 120, 170, 240, 50);
         shapeRenderer.end();
 
-        // Desenhar texto NIVEL 1 por cima
         batch.begin();
+        // Título: RUNNEXT
+        fontGrande.setColor(Color.WHITE);
+        fontGrande.draw(batch, "RUNNEXT", centroX - 140, 350);
+
+        // Texto: NIVEL 1 (por cima do retângulo)
         fontMedia.setColor(Color.WHITE);
         fontMedia.draw(batch, "NIVEL 1", centroX - 70, 200);
         batch.end();
@@ -131,8 +115,8 @@ public class MenuScreen implements Screen {
             // Está no menu principal → vai para seleção de nível
             menuState = 1;
         } else if (menuState == 1) {
-            // Está na seleção de nível → inicia o jogo
-            game.setScreen(new GameScreen());
+            // Está na seleção de nível → inicia o jogo (passando 'game' para o GameScreen)
+            game.setScreen(new GameScreen(game));
         }
     }
 
