@@ -19,6 +19,10 @@ public class Player {
     private float velocityX, velocityY;
     private boolean onGround;
 
+    // Controles externos (toque)
+    private boolean movingLeft = false;
+    private boolean movingRight = false;
+
     public enum State { IDLE, RUN, JUMP, FALL }
     private State state = State.IDLE;
 
@@ -29,24 +33,26 @@ public class Player {
 
     public void update(float delta) {
         handleInput();
-        velocityY += GRAVITY * delta;
-        x += velocityX * delta;
-        y += velocityY * delta;
+        applyPhysics(delta);
         updateState();
     }
 
     private void handleInput() {
         velocityX = 0;
-        if (Gdx.input.isKeyPressed(Input.Keys.LEFT) || Gdx.input.isKeyPressed(Input.Keys.A)) {
+
+        // Usar controles de toque OU teclado
+        if (movingLeft) {
             velocityX = -MOVE_SPEED;
         }
-        if (Gdx.input.isKeyPressed(Input.Keys.RIGHT) || Gdx.input.isKeyPressed(Input.Keys.D)) {
+        if (movingRight) {
             velocityX = MOVE_SPEED;
         }
-        if ((Gdx.input.isKeyJustPressed(Input.Keys.SPACE) || Gdx.input.isKeyJustPressed(Input.Keys.UP)) && onGround) {
-            velocityY = JUMP_SPEED;
-            onGround = false;
-        }
+    }
+
+    private void applyPhysics(float delta) {
+        velocityY += GRAVITY * delta;
+        x += velocityX * delta;
+        y += velocityY * delta;
     }
 
     private void updateState() {
@@ -83,4 +89,13 @@ public class Player {
 
     public float getVelocityY() { return velocityY; }
     public State getState() { return state; }
+
+    // Métodos para controle externo (toque)
+    public void setMovingLeft(boolean moving) {
+        this.movingLeft = moving;
+    }
+
+    public void setMovingRight(boolean moving) {
+        this.movingRight = moving;
+    }
 }
