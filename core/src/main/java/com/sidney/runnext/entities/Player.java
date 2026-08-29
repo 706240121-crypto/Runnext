@@ -67,9 +67,9 @@ public class Player {
     public void render(ShapeRenderer renderer) {
         // Define a cor baseada no estado
         Color baseColor = Color.WHITE;
-        if (state == State.RUN) baseColor = Color.CYAN;
-        else if (state == State.JUMP) baseColor = Color.YELLOW;
-        else if (state == State.FALL) baseColor = Color.ORANGE;
+        //if (state == State.RUN) baseColor = Color.CYAN;
+        //else if (state == State.JUMP) baseColor = Color.YELLOW;
+      //  else if (state == State.FALL) baseColor = Color.ORANGE;
 
         renderer.setColor(baseColor);
 
