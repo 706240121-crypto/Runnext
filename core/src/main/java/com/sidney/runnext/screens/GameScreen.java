@@ -258,7 +258,7 @@ public class GameScreen implements Screen, InputProcessor {
     }
 
     private void drawPauseMenu() {
-        // Fundo escuro semi-transparente cobrindo todo o ecrã (efeito de "overlay")
+        // Fundo escuro semi-transparente cobrindo
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         shapeRenderer.setColor(0, 0, 0, 0.7f); // RGBA: preto com 70% de opacidade
         shapeRenderer.rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
