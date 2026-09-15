@@ -39,11 +39,24 @@ public class GameScreen implements Screen, InputProcessor {
     private final Player player; // Entidade jogável (definida na classe Player)
     private final Rectangle ground; // Retângulo que representa o "chão" (para colisão)
 
-    // Botões de controlo (ESQUERDA e DIREITA - juntos no canto inferior esquerdo)
+    // Detalhes do Fundo (Estrelas e Nuvens)
+    private final float[] starX = new float[40];
+    private final float[] starY = new float[40];
+    private final float[] starSize = new float[40];
+
+    private final float[] cloudX = new float[5];
+    private final float[] cloudY = new float[5];
+    private final float[] cloudWidth = new float[5];
+    private final float[] cloudHeight = new float[5];
+    private final float[] cloudSpeed = new float[5];
+
+    // Botões de controlo (ESQUERDA, DIREITA e SALTAR)
     private final Rectangle btnLeft;
     private final Rectangle btnRight;
-    private boolean touchLeft = false;  // Estado: o botão esquerdo está a ser tocado neste frame?
-    private boolean touchRight = false; // Estado: o botão direito está a ser tocado neste frame?
+    private final Rectangle btnJump;
+    private boolean touchLeft = false;
+    private boolean touchRight = false;
+    private boolean touchJump = false;
 
     // Botão de Pausa (centralizado no topo)
     private final Rectangle btnPause;
@@ -79,6 +92,22 @@ public class GameScreen implements Screen, InputProcessor {
         fontGrande.getData().setScale(3f);
         fontGrande.setColor(Color.WHITE);
 
+        // Inicializar estrelas aleatórias
+        for (int i = 0; i < 40; i++) {
+            starX[i] = (float) Math.random() * WORLD_WIDTH;
+            starY[i] = (float) Math.random() * (WORLD_HEIGHT - 100) + 100;
+            starSize[i] = (float) Math.random() * 2 + 1;
+        }
+
+        // Inicializar nuvens aleatórias
+        for (int i = 0; i < 5; i++) {
+            cloudX[i] = (float) Math.random() * WORLD_WIDTH;
+            cloudY[i] = (float) Math.random() * 150 + 250;
+            cloudWidth[i] = (float) Math.random() * 60 + 60;
+            cloudHeight[i] = (float) Math.random() * 20 + 20;
+            cloudSpeed[i] = (float) Math.random() * 15 + 5;
+        }
+
         // Chão: uma faixa retangular no fundo do ecrã, com 40 de altura
         ground = new Rectangle(0, 0, WORLD_WIDTH, 40);
 
@@ -88,6 +117,9 @@ public class GameScreen implements Screen, InputProcessor {
         // Botões ESQUERDA e DIREITA (lado a lado, canto inferior esquerdo)
         btnLeft = new Rectangle(30, 15, 60, 50);
         btnRight = new Rectangle(100, 15, 60, 50);
+
+        // Botão SALTAR (canto inferior direito)
+        btnJump = new Rectangle(WORLD_WIDTH - 140, 15, 110, 50);
 
         // Botão de Pausa centralizado no topo.
         // Cálculo: (WORLD_WIDTH / 2) - (largura do botão / 2) = 400 - 25 = 375
@@ -121,6 +153,15 @@ public class GameScreen implements Screen, InputProcessor {
         if (!isPaused) {
             player.update(delta);
 
+            // Atualizar movimento das nuvens
+            for (int i = 0; i < 5; i++) {
+                cloudX[i] -= cloudSpeed[i] * delta;
+                if (cloudX[i] + cloudWidth[i] < 0) {
+                    cloudX[i] = WORLD_WIDTH;
+                    cloudY[i] = (float) Math.random() * 150 + 250;
+                }
+            }
+
             // Impede o jogador de sair pelos limites laterais do ecrã
             if (player.getX() < 0) {
                 player.setX(0);
@@ -146,8 +187,22 @@ public class GameScreen implements Screen, InputProcessor {
         shapeRenderer.setProjectionMatrix(camera.combined);
         batch.setProjectionMatrix(camera.combined);
 
-        // 4) Desenhar o cenário (chão) e o jogador
+        // 4) Desenhar o cenário (estrelas, nuvens, chão) e o jogador
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+
+        // Estrelas
+        shapeRenderer.setColor(Color.WHITE);
+        for (int i = 0; i < 40; i++) {
+            shapeRenderer.rect(starX[i], starY[i], starSize[i], starSize[i]);
+        }
+
+        // Nuvens (cinza azulado suave)
+        shapeRenderer.setColor(0.5f, 0.5f, 0.6f, 1f);
+        for (int i = 0; i < 5; i++) {
+            shapeRenderer.rect(cloudX[i], cloudY[i], cloudWidth[i], cloudHeight[i]);
+            shapeRenderer.rect(cloudX[i] + cloudWidth[i] * 0.2f, cloudY[i] + cloudHeight[i] * 0.8f, cloudWidth[i] * 0.6f, cloudHeight[i] * 0.4f);
+        }
+
         shapeRenderer.setColor(Color.GREEN);
         shapeRenderer.rect(ground.x, ground.y, ground.width, ground.height);
         player.render(shapeRenderer); // O próprio Player sabe desenhar-se a si mesmo
@@ -163,56 +218,47 @@ public class GameScreen implements Screen, InputProcessor {
     }
 
     private void updateTouchInput() {
-        // Reinicia os estados de movimento a cada frame (evita "colar" o movimento)
+        // Reinicia os estados de movimento a cada frame
         touchLeft = false;
         touchRight = false;
+        touchJump = false;
 
-        if (Gdx.input.isTouched()) {
-            // As coordenadas de toque vêm em pixels do ecrã (origem no canto superior esquerdo).
-            // camera.unproject() converte-as para coordenadas do "mundo" do jogo (origem em baixo).
-            Vector3 touchPos = new Vector3(Gdx.input.getX(), Gdx.input.getY(), 0);
-            camera.unproject(touchPos);
+        // Verifica multi-touch (até 3 dedos)
+        for (int i = 0; i < 3; i++) {
+            if (Gdx.input.isTouched(i)) {
+                Vector3 touchPos = new Vector3(Gdx.input.getX(i), Gdx.input.getY(i), 0);
+                camera.unproject(touchPos);
 
-            float touchX = touchPos.x;
-            float touchY = touchPos.y;
+                float touchX = touchPos.x;
+                float touchY = touchPos.y;
 
-            if (isPaused) {
-                // --- Enquanto pausado, só os botões do menu de pausa reagem ---
-                if (btnResume.contains(touchX, touchY)) {
-                    isPaused = false;
-                    Gdx.app.log("GameScreen", "Continuar");
-                } else if (btnRestart.contains(touchX, touchY)) {
-                    // Reinicia a posição do jogador e retoma o jogo
-                    player.setX(100);
-                    player.setY(ground.y + ground.height + 10);
-                    isPaused = false;
-                    Gdx.app.log("GameScreen", "Reiniciar");
-                } else if (btnMainMenu.contains(touchX, touchY)) {
-                    // Volta ao menu principal e liberta os recursos deste ecrã
-                    game.setScreen(new MenuScreen(game));
-                    dispose();
-                    Gdx.app.log("GameScreen", "Menu Principal");
-                }
-            } else {
-                // --- Jogo normal (não pausado): botões de movimento e pausa ---
-                if (btnLeft.contains(touchX, touchY)) {
-                    touchLeft = true;
-                }
-                if (btnRight.contains(touchX, touchY)) {
-                    touchRight = true;
-                }
-
-                // Botão de Pausa (topo centralizado)
-                if (btnPause.contains(touchX, touchY)) {
-                    isPaused = true;
-                    Gdx.app.log("GameScreen", "Pausa ativada");
+                if (isPaused) {
+                    if (btnResume.contains(touchX, touchY) && i == 0) {
+                        isPaused = false;
+                        Gdx.app.log("GameScreen", "Continuar");
+                    } else if (btnRestart.contains(touchX, touchY) && i == 0) {
+                        player.setX(100);
+                        player.setY(ground.y + ground.height + 10);
+                        isPaused = false;
+                        Gdx.app.log("GameScreen", "Reiniciar");
+                    } else if (btnMainMenu.contains(touchX, touchY) && i == 0) {
+                        game.setScreen(new MenuScreen(game));
+                        dispose();
+                        Gdx.app.log("GameScreen", "Menu Principal");
+                    }
+                } else {
+                    if (btnLeft.contains(touchX, touchY)) touchLeft = true;
+                    if (btnRight.contains(touchX, touchY)) touchRight = true;
+                    if (btnJump.contains(touchX, touchY)) touchJump = true;
+                    if (btnPause.contains(touchX, touchY) && i == 0) {
+                        isPaused = true;
+                        Gdx.app.log("GameScreen", "Pausa ativada");
+                    }
                 }
             }
         }
 
-        // Aplica o movimento ao jogador (só quando o jogo não está pausado).
-        // Aceita tanto toque no ecrã (touchLeft/touchRight) como teclado (setas ou A/D),
-        // útil para testar no computador (desktop) durante o desenvolvimento.
+        // Aplica o movimento ao jogador
         if (!isPaused) {
             if (touchLeft || Gdx.input.isKeyPressed(Input.Keys.LEFT) || Gdx.input.isKeyPressed(Input.Keys.A)) {
                 player.setMovingLeft(true);
@@ -225,33 +271,34 @@ public class GameScreen implements Screen, InputProcessor {
             } else {
                 player.setMovingRight(false);
             }
+
+            if (touchJump || Gdx.input.isKeyPressed(Input.Keys.SPACE) || Gdx.input.isKeyPressed(Input.Keys.UP) || Gdx.input.isKeyPressed(Input.Keys.W)) {
+                player.jump();
+            }
         }
     }
 
     private void drawUI() {
-        // Desenha os retângulos dos botões (esquerda, direita e pausa)
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
 
-        // Botões Esquerda/Direita (Brancos)
+        // Botões Esquerda, Direita e Saltar (Brancos)
         shapeRenderer.setColor(Color.WHITE);
         shapeRenderer.rect(btnLeft.x, btnLeft.y, btnLeft.width, btnLeft.height);
         shapeRenderer.rect(btnRight.x, btnRight.y, btnRight.width, btnRight.height);
+        shapeRenderer.rect(btnJump.x, btnJump.y, btnJump.width, btnJump.height);
 
-        // Botão de Pausa (Cinza Escuro), no topo centralizado
+        // Botão de Pausa (Cinza Escuro)
         shapeRenderer.setColor(Color.DARK_GRAY);
         shapeRenderer.rect(btnPause.x, btnPause.y, btnPause.width, btnPause.height);
 
         shapeRenderer.end();
 
-        // Desenha o texto/ícones por cima dos botões.
-        // Nota: ShapeRenderer e SpriteBatch nunca devem estar "begin()" ao mesmo tempo,
-        // por isso o batch.begin() só ocorre depois do shapeRenderer.end() acima.
         batch.begin();
         font.setColor(Color.BLACK);
         font.draw(batch, "<", btnLeft.x + 25, btnLeft.y + 35);
         font.draw(batch, ">", btnRight.x + 25, btnRight.y + 35);
+        font.draw(batch, "SALTAR", btnJump.x + 10, btnJump.y + 35);
 
-        // Ícone de Pausa ("||") em branco, para contrastar com o fundo cinza escuro
         font.setColor(Color.WHITE);
         font.draw(batch, "||", btnPause.x + 10, btnPause.y + 28);
         batch.end();

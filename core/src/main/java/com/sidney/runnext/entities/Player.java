@@ -51,6 +51,14 @@ public class Player {
         if (movingRight) velocityX = MOVE_SPEED;
     }
 
+    // Aplica o impulso vertical do salto se o jogador estiver no chão.
+    public void jump() {
+        if (onGround) {
+            velocityY = JUMP_SPEED;
+            onGround = false;
+        }
+    }
+
     // Aplica gravidade e move o jogador de acordo com a velocidade e o tempo decorrido (delta).
     // Usar "delta" garante que o movimento é consistente independentemente do FPS do dispositivo.
     private void applyPhysics(float delta) {
