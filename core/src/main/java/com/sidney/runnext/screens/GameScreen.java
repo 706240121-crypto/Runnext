@@ -8,8 +8,10 @@ import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector3;
@@ -29,26 +31,28 @@ public class GameScreen implements Screen, InputProcessor {
     private static final float WORLD_WIDTH = 800;
     private static final float WORLD_HEIGHT = 480;
 
+    // Imagens de fundo, uma por nível (1 = Floresta, 2 = Montanha, 3 = Castelo).
+    // Os ficheiros estão na pasta assets/backgrounds.
+    private static final String[] BACKGROUND_FILES = {
+        "backgrounds/bg_nivel1_floresta.png",
+        "backgrounds/bg_nivel2_montanha.png",
+        "backgrounds/bg_nivel3_castelo.png"
+    };
+
     private final OrthographicCamera camera; // Câmara 2D usada para projetar o mundo no ecrã
     private final Viewport viewport;         // Garante que o jogo mantém a proporção em ecrãs diferentes
     private final ShapeRenderer shapeRenderer; // Desenha formas geométricas simples (retângulos, etc.)
-    private final SpriteBatch batch;           // Desenha texto/imagens (usado aqui para as fontes)
+    private final SpriteBatch batch;           // Desenha texto/imagens (usado aqui para as fontes e o fundo)
     private final BitmapFont font;             // Fonte pequena (textos normais, ícones de botões)
     private final BitmapFont fontGrande;       // Fonte grande (título "PAUSADO")
 
     private final Player player; // Entidade jogável (definida na classe Player)
     private final Rectangle ground; // Retângulo que representa o "chão" (para colisão)
 
-    // Detalhes do Fundo (Estrelas e Nuvens)
-    private final float[] starX = new float[40];
-    private final float[] starY = new float[40];
-    private final float[] starSize = new float[40];
-
-    private final float[] cloudX = new float[5];
-    private final float[] cloudY = new float[5];
-    private final float[] cloudWidth = new float[5];
-    private final float[] cloudHeight = new float[5];
-    private final float[] cloudSpeed = new float[5];
+    // Fundo do nível atual
+    private final int level;                  // Número do nível (1 a 3)
+    private final Texture backgroundTexture;  // Imagem carregada do ficheiro
+    private final TextureRegion background;   // Parte da imagem que é desenhada (sem deformar)
 
     // Botões de controlo (ESQUERDA, DIREITA e SALTAR)
     private final Rectangle btnLeft;
@@ -69,8 +73,15 @@ public class GameScreen implements Screen, InputProcessor {
     private final Rectangle btnRestart;
     private final Rectangle btnMainMenu;
 
+    // Construtor usado pelo MenuScreen: começa sempre no nível 1.
     public GameScreen(Game game) {
+        this(game, 1);
+    }
+
+    // Construtor com o nível escolhido (1 = Floresta, 2 = Montanha, 3 = Castelo).
+    public GameScreen(Game game, int level) {
         this.game = game;
+        this.level = Math.max(1, Math.min(level, BACKGROUND_FILES.length));
 
         // Câmara centrada no meio do "mundo" lógico (400, 240)
         camera = new OrthographicCamera();
@@ -92,21 +103,11 @@ public class GameScreen implements Screen, InputProcessor {
         fontGrande.getData().setScale(3f);
         fontGrande.setColor(Color.WHITE);
 
-        // Inicializar estrelas aleatórias
-        for (int i = 0; i < 40; i++) {
-            starX[i] = (float) Math.random() * WORLD_WIDTH;
-            starY[i] = (float) Math.random() * (WORLD_HEIGHT - 100) + 100;
-            starSize[i] = (float) Math.random() * 2 + 1;
-        }
-
-        // Inicializar nuvens aleatórias
-        for (int i = 0; i < 5; i++) {
-            cloudX[i] = (float) Math.random() * WORLD_WIDTH;
-            cloudY[i] = (float) Math.random() * 150 + 250;
-            cloudWidth[i] = (float) Math.random() * 60 + 60;
-            cloudHeight[i] = (float) Math.random() * 20 + 20;
-            cloudSpeed[i] = (float) Math.random() * 15 + 5;
-        }
+        // Carregar o fundo do nível. A imagem é 16:9 (1280x720) e o mundo é 800x480 (5:3),
+        // por isso cortamos 40 pixels de cada lado da imagem para ela encaixar sem esticar.
+        backgroundTexture = new Texture(Gdx.files.internal(BACKGROUND_FILES[this.level - 1]));
+        backgroundTexture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+        background = new TextureRegion(backgroundTexture, 40, 0, 1200, 720);
 
         // Chão: uma faixa retangular no fundo do ecrã, com 40 de altura
         ground = new Rectangle(0, 0, WORLD_WIDTH, 40);
@@ -136,7 +137,7 @@ public class GameScreen implements Screen, InputProcessor {
     @Override
     public void show() {
         // Chamado quando este ecrã se torna o ecrã ativo.
-        Gdx.app.log("GameScreen", "=== TELA INICIADA ===");
+        Gdx.app.log("GameScreen", "=== TELA INICIADA (nível " + level + ") ===");
         // Regista esta classe como o processador de input (ativa touchDown, keyDown, etc.)
         Gdx.input.setInputProcessor(this);
     }
@@ -153,15 +154,6 @@ public class GameScreen implements Screen, InputProcessor {
         if (!isPaused) {
             player.update(delta);
 
-            // Atualizar movimento das nuvens
-            for (int i = 0; i < 5; i++) {
-                cloudX[i] -= cloudSpeed[i] * delta;
-                if (cloudX[i] + cloudWidth[i] < 0) {
-                    cloudX[i] = WORLD_WIDTH;
-                    cloudY[i] = (float) Math.random() * 150 + 250;
-                }
-            }
-
             // Impede o jogador de sair pelos limites laterais do ecrã
             if (player.getX() < 0) {
                 player.setX(0);
@@ -177,8 +169,8 @@ public class GameScreen implements Screen, InputProcessor {
             }
         }
 
-        // 3) Limpar o ecrã com uma cor de fundo azul-acinzentado escuro
-        Gdx.gl.glClearColor(0.15f, 0.15f, 0.2f, 1f);
+        // 3) Limpar o ecrã (as barras pretas do FitViewport aparecem com esta cor)
+        Gdx.gl.glClearColor(0f, 0f, 0f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
         // Atualiza a câmara e aplica a matriz de projeção aos renderizadores,
@@ -187,31 +179,22 @@ public class GameScreen implements Screen, InputProcessor {
         shapeRenderer.setProjectionMatrix(camera.combined);
         batch.setProjectionMatrix(camera.combined);
 
-        // 4) Desenhar o cenário (estrelas, nuvens, chão) e o jogador
+        // 4) Desenhar o fundo do nível, ocupando todo o mundo (800x480)
+        batch.begin();
+        batch.draw(background, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+        batch.end();
+
+        // 5) Desenhar o chão e o jogador por cima do fundo
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-
-        // Estrelas
-        shapeRenderer.setColor(Color.WHITE);
-        for (int i = 0; i < 40; i++) {
-            shapeRenderer.rect(starX[i], starY[i], starSize[i], starSize[i]);
-        }
-
-        // Nuvens (cinza azulado suave)
-        shapeRenderer.setColor(0.5f, 0.5f, 0.6f, 1f);
-        for (int i = 0; i < 5; i++) {
-            shapeRenderer.rect(cloudX[i], cloudY[i], cloudWidth[i], cloudHeight[i]);
-            shapeRenderer.rect(cloudX[i] + cloudWidth[i] * 0.2f, cloudY[i] + cloudHeight[i] * 0.8f, cloudWidth[i] * 0.6f, cloudHeight[i] * 0.4f);
-        }
-
         shapeRenderer.setColor(Color.GREEN);
         shapeRenderer.rect(ground.x, ground.y, ground.width, ground.height);
         player.render(shapeRenderer); // O próprio Player sabe desenhar-se a si mesmo
         shapeRenderer.end();
 
-        // 5) Desenhar a interface (botões esquerda/direita/pausa) — sempre visível
+        // 6) Desenhar a interface (botões esquerda/direita/pausa) — sempre visível
         drawUI();
 
-        // 6) Se estiver pausado, desenhar o menu de pausa por cima de tudo
+        // 7) Se estiver pausado, desenhar o menu de pausa por cima de tudo
         if (isPaused) {
             drawPauseMenu();
         }
@@ -419,5 +402,6 @@ public class GameScreen implements Screen, InputProcessor {
         batch.dispose();
         font.dispose();
         fontGrande.dispose();
+        backgroundTexture.dispose();
     }
 }
