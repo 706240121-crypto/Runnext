@@ -9,14 +9,17 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector3;
+import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
+import com.sidney.runnext.entities.Coin;
 import com.sidney.runnext.entities.Player;
 
 // GameScreen representa o ecrã principal do jogo (onde a jogabilidade acontece).
@@ -42,7 +45,7 @@ public class GameScreen implements Screen, InputProcessor {
     private final OrthographicCamera camera; // Câmara 2D usada para projetar o mundo no ecrã
     private final Viewport viewport;         // Garante que o jogo mantém a proporção em ecrãs diferentes
     private final ShapeRenderer shapeRenderer; // Desenha formas geométricas simples (retângulos, etc.)
-    private final SpriteBatch batch;           // Desenha texto/imagens (usado aqui para as fontes e o fundo)
+    private final SpriteBatch batch;           // Desenha texto/imagens (usado aqui para as fontes, o fundo e as moedas)
     private final BitmapFont font;             // Fonte pequena (textos normais, ícones de botões)
     private final BitmapFont fontGrande;       // Fonte grande (título "PAUSADO")
 
@@ -53,6 +56,13 @@ public class GameScreen implements Screen, InputProcessor {
     private final int level;                  // Número do nível (1 a 3)
     private final Texture backgroundTexture;  // Imagem carregada do ficheiro
     private final TextureRegion background;   // Parte da imagem que é desenhada (sem deformar)
+
+    // Moedas
+    private final Texture coinTexture;                    // Folha com os 4 frames da moeda a rodar
+    private final Animation<TextureRegion> coinAnimation; // Animação da moeda
+    private final Array<Coin> coins = new Array<>();      // Moedas do nível
+    private int coinsCollected = 0;                       // Quantas moedas o jogador já apanhou
+    private float stateTime = 0f;                         // Tempo acumulado, para animar as moedas
 
     // Botões de controlo (ESQUERDA, DIREITA e SALTAR)
     private final Rectangle btnLeft;
@@ -109,11 +119,21 @@ public class GameScreen implements Screen, InputProcessor {
         backgroundTexture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
         background = new TextureRegion(backgroundTexture, 40, 0, 1200, 720);
 
+        // Carregar a animação da moeda: a folha tem 4 frames de 16x16 pixels lado a lado.
+        // Nearest mantém o pixel art nítido ao ampliar.
+        coinTexture = new Texture(Gdx.files.internal("sprites/coin.png"));
+        coinTexture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        TextureRegion[][] coinFrames = TextureRegion.split(coinTexture, 16, 16);
+        coinAnimation = new Animation<>(0.12f, coinFrames[0]);
+
         // Chão: uma faixa retangular no fundo do ecrã, com 40 de altura
         ground = new Rectangle(0, 0, WORLD_WIDTH, 40);
 
         // Jogador criado logo acima do chão, começando em X=100
         player = new Player(100, ground.y + ground.height + 10);
+
+        // Colocar as moedas no nível
+        createCoins();
 
         // Botões ESQUERDA e DIREITA (lado a lado, canto inferior esquerdo)
         btnLeft = new Rectangle(30, 15, 60, 50);
@@ -132,6 +152,26 @@ public class GameScreen implements Screen, InputProcessor {
         btnResume = new Rectangle(centerX, 300, 200, 50);
         btnRestart = new Rectangle(centerX, 230, 200, 50);
         btnMainMenu = new Rectangle(centerX, 160, 200, 50);
+    }
+
+    // Cria as moedas do nível. Para mudar a posição, altere os números aqui.
+    // (x = posição horizontal, y = altura; o chão termina em y = 40)
+    private void createCoins() {
+        coins.clear();
+        coinsCollected = 0;
+
+        float groundTop = ground.y + ground.height;
+
+        // Grupo 1: fila de 5 moedas no chão (basta andar para as apanhar)
+        for (int i = 0; i < 5; i++) {
+            coins.add(new Coin(280 + i * 45, groundTop + 6));
+        }
+
+        // Grupo 2: arco de 5 moedas no ar (é preciso saltar para as apanhar)
+        float[] arcY = {groundTop + 55, groundTop + 85, groundTop + 100, groundTop + 85, groundTop + 55};
+        for (int i = 0; i < 5; i++) {
+            coins.add(new Coin(540 + i * 45, arcY[i]));
+        }
     }
 
     @Override
@@ -153,6 +193,7 @@ public class GameScreen implements Screen, InputProcessor {
         // 2) Atualizar lógica do jogo (só corre se o jogo NÃO estiver pausado)
         if (!isPaused) {
             player.update(delta);
+            stateTime += delta; // faz avançar a animação das moedas
 
             // Impede o jogador de sair pelos limites laterais do ecrã
             if (player.getX() < 0) {
@@ -167,6 +208,16 @@ public class GameScreen implements Screen, InputProcessor {
             if (bounds.y <= ground.y + ground.height && player.getVelocityY() <= 0) {
                 player.landOn(ground.y + ground.height);
             }
+
+            // Colisão jogador x moedas: se tocar numa moeda, ela desaparece e conta +1.
+            Rectangle playerBounds = player.getBounds();
+            for (Coin coin : coins) {
+                if (!coin.isCollected() && playerBounds.overlaps(coin.getBounds())) {
+                    coin.collect();
+                    coinsCollected++;
+                    Gdx.app.log("GameScreen", "Moeda apanhada! Total: " + coinsCollected);
+                }
+            }
         }
 
         // 3) Limpar o ecrã (as barras pretas do FitViewport aparecem com esta cor)
@@ -179,12 +230,16 @@ public class GameScreen implements Screen, InputProcessor {
         shapeRenderer.setProjectionMatrix(camera.combined);
         batch.setProjectionMatrix(camera.combined);
 
-        // 4) Desenhar o fundo do nível, ocupando todo o mundo (800x480)
+        // 4) Desenhar o fundo do nível (800x480) e, por cima dele, as moedas
         batch.begin();
         batch.draw(background, 0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+        for (Coin coin : coins) {
+            TextureRegion frame = coinAnimation.getKeyFrame(stateTime + coin.getAnimationOffset(), true);
+            coin.render(batch, frame);
+        }
         batch.end();
 
-        // 5) Desenhar o chão e o jogador por cima do fundo
+        // 5) Desenhar o chão e o jogador por cima
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         shapeRenderer.setColor(Color.GREEN);
         shapeRenderer.rect(ground.x, ground.y, ground.width, ground.height);
@@ -222,6 +277,7 @@ public class GameScreen implements Screen, InputProcessor {
                     } else if (btnRestart.contains(touchX, touchY) && i == 0) {
                         player.setX(100);
                         player.setY(ground.y + ground.height + 10);
+                        createCoins(); // as moedas voltam a aparecer e o contador volta a zero
                         isPaused = false;
                         Gdx.app.log("GameScreen", "Reiniciar");
                     } else if (btnMainMenu.contains(touchX, touchY) && i == 0) {
@@ -284,6 +340,17 @@ public class GameScreen implements Screen, InputProcessor {
 
         font.setColor(Color.WHITE);
         font.draw(batch, "||", btnPause.x + 10, btnPause.y + 28);
+
+        // Contador de moedas (canto superior esquerdo): ícone da moeda + "apanhadas / total".
+        // O ícone usa a mesma animação das moedas do nível.
+        TextureRegion coinIcon = coinAnimation.getKeyFrame(stateTime, true);
+        batch.draw(coinIcon, 20, WORLD_HEIGHT - 50, 32, 32);
+
+        String coinText = "x " + coinsCollected + " / " + coins.size;
+        font.setColor(Color.BLACK); // sombra preta, para o texto ler-se bem em qualquer fundo
+        font.draw(batch, coinText, 62, WORLD_HEIGHT - 22);
+        font.setColor(Color.WHITE);
+        font.draw(batch, coinText, 60, WORLD_HEIGHT - 20);
         batch.end();
     }
 
@@ -403,5 +470,6 @@ public class GameScreen implements Screen, InputProcessor {
         font.dispose();
         fontGrande.dispose();
         backgroundTexture.dispose();
+        coinTexture.dispose();
     }
 }
