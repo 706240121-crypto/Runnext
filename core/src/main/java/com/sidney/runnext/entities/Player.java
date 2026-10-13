@@ -6,10 +6,11 @@ import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Rectangle;
+import com.badlogic.gdx.utils.Array;
 
 public class Player {
 
-    public static final float WIDTH = 100f;
+    public static final float WIDTH = 150f;
     public static final float HEIGHT = 150f;
     private static final float FOOT_OFFSET = 12f;
 
@@ -28,33 +29,48 @@ public class Player {
     public enum State { IDLE, RUN, JUMP, FALL }
     private State state = State.IDLE;
 
-    private Texture spriteSheet;
+    // Animações para os novos sprites da Guerreira
+    private Animation<TextureRegion> idleAnimation;
     private Animation<TextureRegion> runAnimation;
-    private TextureRegion idleFrame;
-    private TextureRegion jumpFrame;
+    private Animation<TextureRegion> jumpAnimation;
+
+    // Lista para guardar as texturas e fazer o dispose no final
+    private Array<Texture> loadedTextures;
+
     private float stateTime = 0f;
 
     public Player(float startX, float startY) {
         this.x = startX;
         this.y = startY;
 
-        spriteSheet = new Texture(Gdx.files.internal("odete.png"));
+        loadedTextures = new Array<Texture>();
 
-        TextureRegion[][] tmp = TextureRegion.split(spriteSheet, spriteSheet.getWidth() / 4, spriteSheet.getHeight() / 2);
+        // 1. Carregar Animação IDLE (6 frames da pasta assets/idle)
+        Array<TextureRegion> idleFrames = new Array<TextureRegion>();
+        for (int i = 1; i <= 6; i++) {
+            Texture tex = new Texture(Gdx.files.internal("idle/Warrior_Idle_" + i + ".png"));
+            loadedTextures.add(tex);
+            idleFrames.add(new TextureRegion(tex));
+        }
+        idleAnimation = new Animation<TextureRegion>(0.15f, idleFrames, Animation.PlayMode.LOOP);
 
-        // 1. Ciclo de corrida com os 3 quadros limpos
-        TextureRegion[] runFrames = new TextureRegion[3];
-        runFrames[0] = tmp[0][0];
-        runFrames[1] = tmp[0][1];
-        runFrames[2] = tmp[0][2];
-        runAnimation = new Animation<TextureRegion>(0.12f, runFrames);
+        // 2. Carregar Animação RUN (8 frames da pasta assets/Run)
+        Array<TextureRegion> runFrames = new Array<TextureRegion>();
+        for (int i = 1; i <= 8; i++) {
+            Texture tex = new Texture(Gdx.files.internal("Run/Warrior_Run_" + i + ".png"));
+            loadedTextures.add(tex);
+            runFrames.add(new TextureRegion(tex));
+        }
+        runAnimation = new Animation<TextureRegion>(0.10f, runFrames, Animation.PlayMode.LOOP);
 
-        // 2. Estados estáticos
-        idleFrame = tmp[1][0]; // Parada de frente
-
-        // CORREÇÃO DO SALTO: Usamos o quadro [0][3] (o 4º da linha de cima) que tem exatamente
-        // o mesmo alinhamento de grelha da corrida, evitando que a imagem fique cortada ao meio.
-        jumpFrame = tmp[0][3];
+        // 3. Carregar Animação JUMP (3 frames da pasta assets/Jump)
+        Array<TextureRegion> jumpFrames = new Array<TextureRegion>();
+        for (int i = 1; i <= 3; i++) {
+            Texture tex = new Texture(Gdx.files.internal("Jump/Warrior_Jump_" + i + ".png"));
+            loadedTextures.add(tex);
+            jumpFrames.add(new TextureRegion(tex));
+        }
+        jumpAnimation = new Animation<TextureRegion>(0.12f, jumpFrames, Animation.PlayMode.NORMAL);
     }
 
     public void update(float delta) {
@@ -80,6 +96,7 @@ public class Player {
         if (onGround) {
             velocityY = JUMP_SPEED;
             onGround = false;
+            stateTime = 0f; // Reinicia o tempo para começar a animação do salto do início
         }
     }
 
@@ -90,12 +107,19 @@ public class Player {
     }
 
     private void updateState() {
+        State oldState = state;
+
         if (!onGround) {
             state = velocityY > 0 ? State.JUMP : State.FALL;
         } else if (velocityX != 0) {
             state = State.RUN;
         } else {
             state = State.IDLE;
+        }
+
+        // Se mudou de estado, reinicia o contador do frame da animação
+        if (oldState != state) {
+            stateTime = 0f;
         }
     }
 
@@ -114,15 +138,15 @@ public class Player {
                 break;
             case JUMP:
             case FALL:
-                currentFrame = jumpFrame;
+                currentFrame = jumpAnimation.getKeyFrame(stateTime, false);
                 break;
             case IDLE:
             default:
-                currentFrame = idleFrame;
+                currentFrame = idleAnimation.getKeyFrame(stateTime, true);
                 break;
         }
 
-        // Limpeza de segurança para evitar qualquer flip acumulado
+        // Garante que a orientação base do frame não vem invertida
         if (currentFrame.isFlipX()) {
             currentFrame.flip(true, false);
         }
@@ -130,8 +154,9 @@ public class Player {
         float drawWidth = WIDTH;
         float drawX = x;
 
-        // Inversão correta e segura da direção
-        if (facingRight) {
+        // CORREÇÃO DA DIREÇÃO:
+        // Inverte a imagem quando estiver a olhar para a ESQUERDA (!facingRight)
+        if (!facingRight) {
             drawX += WIDTH;
             drawWidth = -WIDTH;
         }
@@ -140,8 +165,11 @@ public class Player {
     }
 
     public void dispose() {
-        if (spriteSheet != null) {
-            spriteSheet.dispose();
+        if (loadedTextures != null) {
+            for (Texture tex : loadedTextures) {
+                tex.dispose();
+            }
+            loadedTextures.clear();
         }
     }
 
