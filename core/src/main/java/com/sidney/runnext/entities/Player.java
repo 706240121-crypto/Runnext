@@ -1,57 +1,81 @@
 package com.sidney.runnext.entities;
 
 import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.Input;
-import com.badlogic.gdx.graphics.Color;
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.Animation;
+import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Rectangle;
 
-// Representa o jogador: posição, física (gravidade/movimento) e desenho ("boneco" feito de formas).
 public class Player {
 
-    // Dimensões fixas do jogador, usadas para colisão e para desenhar as partes do corpo
-    public static final float WIDTH = 32f;
-    public static final float HEIGHT = 48f;
+    public static final float WIDTH = 100f;
+    public static final float HEIGHT = 150f;
+    private static final float FOOT_OFFSET = 12f;
 
-    // Constantes de física (unidades do "mundo" por segundo)
-    private static final float MOVE_SPEED = 200f;  // velocidade horizontal ao mover-se
-    private static final float JUMP_SPEED = 500f;  // velocidade vertical inicial ao saltar (não usada ainda — ver nota no fim)
-    private static final float GRAVITY = -1000f;   // aceleração da gravidade (negativa = puxa para baixo)
+    private static final float MOVE_SPEED = 200f;
+    private static final float JUMP_SPEED = 500f;
+    private static final float GRAVITY = -1000f;
 
-    private float x, y;                 // posição atual do jogador (canto inferior esquerdo do "hitbox")
-    private float velocityX, velocityY; // velocidade atual nos eixos X e Y
-    private boolean onGround;           // true quando o jogador está apoiado no chão
+    private float x, y;
+    private float velocityX, velocityY;
+    private boolean onGround;
+    private boolean facingRight = true;
 
-    // Flags de input, controladas externamente (pelo GameScreen) via setMovingLeft/setMovingRight
     private boolean movingLeft = false;
     private boolean movingRight = false;
 
-    // Estado atual da animação/comportamento do jogador
     public enum State { IDLE, RUN, JUMP, FALL }
     private State state = State.IDLE;
+
+    private Texture spriteSheet;
+    private Animation<TextureRegion> runAnimation;
+    private TextureRegion idleFrame;
+    private TextureRegion jumpFrame;
+    private float stateTime = 0f;
 
     public Player(float startX, float startY) {
         this.x = startX;
         this.y = startY;
+
+        spriteSheet = new Texture(Gdx.files.internal("odete.png"));
+
+        TextureRegion[][] tmp = TextureRegion.split(spriteSheet, spriteSheet.getWidth() / 4, spriteSheet.getHeight() / 2);
+
+        // 1. Ciclo de corrida com os 3 quadros limpos
+        TextureRegion[] runFrames = new TextureRegion[3];
+        runFrames[0] = tmp[0][0];
+        runFrames[1] = tmp[0][1];
+        runFrames[2] = tmp[0][2];
+        runAnimation = new Animation<TextureRegion>(0.12f, runFrames);
+
+        // 2. Estados estáticos
+        idleFrame = tmp[1][0]; // Parada de frente
+
+        // CORREÇÃO DO SALTO: Usamos o quadro [0][3] (o 4º da linha de cima) que tem exatamente
+        // o mesmo alinhamento de grelha da corrida, evitando que a imagem fique cortada ao meio.
+        jumpFrame = tmp[0][3];
     }
 
-    // Chamado a cada frame pelo GameScreen. Atualiza input, física e estado, por esta ordem.
     public void update(float delta) {
         handleInput();
         applyPhysics(delta);
         updateState();
+        stateTime += delta;
     }
 
-    // Define a velocidade horizontal com base nas flags de movimento.
-    // Nota: se movingLeft e movingRight estiverem ambos true, o direito "ganha"
-    // (velocityX fica positivo), pois a condição da direita é avaliada por último.
     private void handleInput() {
         velocityX = 0;
-        if (movingLeft) velocityX = -MOVE_SPEED;
-        if (movingRight) velocityX = MOVE_SPEED;
+        if (movingLeft) {
+            velocityX = -MOVE_SPEED;
+            facingRight = false;
+        }
+        if (movingRight) {
+            velocityX = MOVE_SPEED;
+            facingRight = true;
+        }
     }
 
-    // Aplica o impulso vertical do salto se o jogador estiver no chão.
     public void jump() {
         if (onGround) {
             velocityY = JUMP_SPEED;
@@ -59,18 +83,14 @@ public class Player {
         }
     }
 
-    // Aplica gravidade e move o jogador de acordo com a velocidade e o tempo decorrido (delta).
-    // Usar "delta" garante que o movimento é consistente independentemente do FPS do dispositivo.
     private void applyPhysics(float delta) {
-        velocityY += GRAVITY * delta; // acelera a queda a cada frame
+        velocityY += GRAVITY * delta;
         x += velocityX * delta;
         y += velocityY * delta;
     }
 
-    // Decide o estado visual/lógico do jogador consoante a física atual.
     private void updateState() {
         if (!onGround) {
-            // No ar: a subir (velocityY > 0) = JUMP; a descer = FALL
             state = velocityY > 0 ? State.JUMP : State.FALL;
         } else if (velocityX != 0) {
             state = State.RUN;
@@ -79,60 +99,62 @@ public class Player {
         }
     }
 
-    // Chamado pelo GameScreen quando deteta colisão com o chão.
-    // "Cola" o jogador à superfície e zera a velocidade vertical.
     public void landOn(float groundY) {
-        y = groundY;
+        y = groundY - FOOT_OFFSET;
         velocityY = 0;
         onGround = true;
     }
 
-    // Desenha o jogador como um "boneco palito" feito só de retângulos e linhas grossas.
-    public void render(ShapeRenderer renderer) {
-        // Cor base do boneco (a lógica de mudar cor consoante o estado está desativada/comentada)
-        Color baseColor = Color.WHITE;
-        //if (state == State.RUN) baseColor = Color.CYAN;
-        //else if (state == State.JUMP) baseColor = Color.YELLOW;
-        //  else if (state == State.FALL) baseColor = Color.ORANGE;
+    public void render(SpriteBatch batch) {
+        TextureRegion currentFrame;
 
-        renderer.setColor(baseColor);
+        switch (state) {
+            case RUN:
+                currentFrame = runAnimation.getKeyFrame(stateTime, true);
+                break;
+            case JUMP:
+            case FALL:
+                currentFrame = jumpFrame;
+                break;
+            case IDLE:
+            default:
+                currentFrame = idleFrame;
+                break;
+        }
 
-        // 1. Cabeça (quadrado de 16x16 no topo, do y+32 ao y+48 = HEIGHT)
-        renderer.rect(x + 8, y + 32, 16, 16);
+        // Limpeza de segurança para evitar qualquer flip acumulado
+        if (currentFrame.isFlipX()) {
+            currentFrame.flip(true, false);
+        }
 
-        // 2. Corpo (retângulo de 8x16, entre a cabeça e as pernas)
-        renderer.rect(x + 12, y + 16, 8, 16);
+        float drawWidth = WIDTH;
+        float drawX = x;
 
-        // 3. Braços (linhas grossas de 3px, a partir do meio do corpo até acima da altura da cabeça)
-        renderer.rectLine(x + 16, y + 24, x + 4, y + 32, 3);   // Braço esquerdo
-        renderer.rectLine(x + 16, y + 24, x + 28, y + 32, 3);  // Braço direito
+        // Inversão correta e segura da direção
+        if (facingRight) {
+            drawX += WIDTH;
+            drawWidth = -WIDTH;
+        }
 
-        // 4. Pernas (linhas grossas de 3px, a partir da base do corpo até ao chão do boneco)
-        renderer.rectLine(x + 16, y + 16, x + 8, y + 4, 3);    // Perna esquerda
-        renderer.rectLine(x + 16, y + 16, x + 24, y + 4, 3);   // Perna direita
+        batch.draw(currentFrame, drawX, y, drawWidth, HEIGHT);
     }
 
-    // Retângulo de colisão (hitbox), usado pelo GameScreen para detetar o chão e os limites do ecrã
+    public void dispose() {
+        if (spriteSheet != null) {
+            spriteSheet.dispose();
+        }
+    }
+
     public Rectangle getBounds() {
         return new Rectangle(x, y, WIDTH, HEIGHT);
     }
 
     public float getVelocityY() { return velocityY; }
     public State getState() { return state; }
-
     public float getX() { return x; }
     public void setX(float x) { this.x = x; }
-
-    // Chamados pelo GameScreen a cada frame, consoante o input (toque/teclado) detetado
+    public float getY() { return y; }
+    public void setY(float y) { this.y = y; }
     public void setMovingLeft(boolean moving) { this.movingLeft = moving; }
     public void setMovingRight(boolean moving) { this.movingRight = moving; }
-
-    // Métodos para controlar a posição Y (ex: usados no "Reiniciar" do menu de pausa)
-    public float getY() {
-        return y;
-    }
-
-    public void setY(float y) {
-        this.y = y;
-    }
 }
