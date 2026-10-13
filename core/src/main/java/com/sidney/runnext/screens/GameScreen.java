@@ -23,17 +23,15 @@ import com.sidney.runnext.entities.Coin;
 import com.sidney.runnext.entities.Player;
 import com.sidney.runnext.utils.SoundManager;
 
-// GameScreen representa o ecrã principal do jogo (onde a jogabilidade acontece).
 public class GameScreen implements Screen, InputProcessor {
 
-    private final Game game; // Referência à aplicação principal
+    private final Game game;
 
-    // Dimensões fixas do "mundo" do jogo
-    private static final float WORLD_WIDTH = 800;
-    private static final float WORLD_HEIGHT = 480;
+    // Aumentámos a largura do mundo para criar uma longa distância de corrida até aos desafios finais
+    private static final float WORLD_WIDTH = 3000f;
+    private static final float WORLD_HEIGHT = 480f;
+    private static final float VIEWPORT_WIDTH = 800f;
 
-    // Imagens de fundo, uma por nível (1 = Floresta, 2 = Montanha, 3 = Castelo).
-    // Os ficheiros estão na pasta assets/backgrounds.
     private static final String[] BACKGROUND_FILES = {
             "backgrounds/bg_nivel1_floresta.png",
             "backgrounds/bg_nivel2_montanha.png",
@@ -41,6 +39,7 @@ public class GameScreen implements Screen, InputProcessor {
     };
 
     private final OrthographicCamera camera;
+    private final OrthographicCamera hudCamera; // Câmara fixa para a interface (botões e texto)
     private final Viewport viewport;
     private final ShapeRenderer shapeRenderer;
     private final SpriteBatch batch;
@@ -61,10 +60,6 @@ public class GameScreen implements Screen, InputProcessor {
     private final Array<Coin> coins = new Array<>();      // Moedas do nível
     private int coinsCollected = 0;                       // Quantas moedas o jogador já apanhou
     private float stateTime = 0f;                         // Tempo acumulado, para animar as moedas
-
-    // Sons
-    private final SoundManager sounds;                  // Efeitos sonoros (salto, moeda, ...)
-    private Player.State lastState = Player.State.IDLE; // Estado anterior, para detetar o início do salto
 
     // Botões de controlo
     private final Rectangle btnLeft;
@@ -107,9 +102,6 @@ public class GameScreen implements Screen, InputProcessor {
         fontGrande = new BitmapFont();
         fontGrande.getData().setScale(3f);
         fontGrande.setColor(Color.WHITE);
-
-        // Carregar os efeitos sonoros
-        sounds = new SoundManager();
 
         // Carregar o fundo do nível. A imagem é 16:9 (1280x720) e o mundo é 800x480 (5:3),
         // por isso cortamos 40 pixels de cada lado da imagem para ela encaixar sem esticar.
@@ -194,13 +186,6 @@ public class GameScreen implements Screen, InputProcessor {
             player.update(delta);
             stateTime += delta; // faz avançar a animação das moedas
 
-            // Som de salto: toca uma vez, no momento em que a personagem começa a saltar
-            Player.State currentState = player.getState();
-            if (currentState == Player.State.JUMP && lastState != Player.State.JUMP) {
-                sounds.playJump();
-            }
-            lastState = currentState;
-
             // Limites laterais do ecrã
             if (player.getX() < 0) {
                 player.setX(0);
@@ -220,7 +205,6 @@ public class GameScreen implements Screen, InputProcessor {
                 if (!coin.isCollected() && playerBody.overlaps(coin.getBounds())) {
                     coin.collect();
                     coinsCollected++;
-                    sounds.playCoin();
                     Gdx.app.log("GameScreen", "Moeda apanhada! Total: " + coinsCollected);
                 }
             }
@@ -454,6 +438,5 @@ public class GameScreen implements Screen, InputProcessor {
         player.dispose();
         backgroundTexture.dispose();
         coinTexture.dispose();
-        sounds.dispose();
     }
 }
