@@ -27,8 +27,7 @@ public class GameScreen implements Screen, InputProcessor {
 
     private final Game game;
 
-    // Mundo longo para a fase 1
-    private static final float WORLD_WIDTH = 3000f;
+    private static final float WORLD_WIDTH = 4200f;
     private static final float WORLD_HEIGHT = 480f;
     private static final float VIEWPORT_WIDTH = 800f;
 
@@ -48,9 +47,11 @@ public class GameScreen implements Screen, InputProcessor {
 
     private final Player player;
 
-    // Chão dividido (Parte 1 livre, buraco de água, Parte 2 final com moedas)
-    private final Rectangle groundPart1;
-    private final Rectangle groundPart2;
+    private final Rectangle ground1;
+    private final Rectangle ground2;
+    private final Rectangle ground3;
+    private final Rectangle ground4;
+    private final Rectangle finishPortal;
 
     private final int level;
     private final Texture backgroundTexture;
@@ -62,10 +63,10 @@ public class GameScreen implements Screen, InputProcessor {
     private int coinsCollected = 0;
     private float stateTime = 0f;
 
-    // Botões de controlo (HUD)
+    private int lives = 3;
+
     private final Rectangle btnLeft;
     private final Rectangle btnRight;
-    // Para o botão redondo de salto, usamos o centro e o raio para detetar o toque
     private final Vector2 btnJumpCenter;
     private final float btnJumpRadius = 45f;
 
@@ -113,19 +114,19 @@ public class GameScreen implements Screen, InputProcessor {
         TextureRegion[][] coinFrames = TextureRegion.split(coinTexture, 16, 16);
         coinAnimation = new Animation<>(0.12f, coinFrames[0]);
 
-        // Chão Parte 1 (0 a 2100) e Parte 2 (2400 a 3000)
-        groundPart1 = new Rectangle(0, 0, 2100, 45);
-        groundPart2 = new Rectangle(2400, 0, 600, 45);
+        ground1 = new Rectangle(0, 0, 800, 45);
+        ground2 = new Rectangle(980, 0, 1020, 45);
+        ground3 = new Rectangle(2250, 0, 1050, 45);
+        ground4 = new Rectangle(3600, 0, 600, 45);
 
-        player = new Player(100, groundPart1.y + groundPart1.height);
+        finishPortal = new Rectangle(4050, 45, 60, 150);
+
+        player = new Player(100, ground1.y + ground1.height);
 
         createCoins();
 
-        // Posição dos botões quadrados à esquerda (estilo imagem de referência)
         btnLeft = new Rectangle(25, 15, 80, 80);
         btnRight = new Rectangle(115, 15, 80, 80);
-
-        // Botão de salto redondo no canto inferior direito
         btnJumpCenter = new Vector2(VIEWPORT_WIDTH - 85, 55);
 
         btnPause = new Rectangle(375, WORLD_HEIGHT - 60, 50, 40);
@@ -140,16 +141,21 @@ public class GameScreen implements Screen, InputProcessor {
         coins.clear();
         coinsCollected = 0;
 
-        float groundTop = groundPart1.y + groundPart1.height;
+        float groundTop = ground1.y + ground1.height;
 
-        // Moedas posicionadas na fase final do nível (após o fosso de água)
+        for (int i = 0; i < 6; i++) {
+            coins.add(new Coin(450 + (i * 50), groundTop + 30));
+        }
+        for (int i = 0; i < 8; i++) {
+            coins.add(new Coin(1200 + (i * 55), groundTop + 30));
+        }
         for (int i = 0; i < 10; i++) {
-            coins.add(new Coin(2250 + (i * 55), groundTop + 30));
+            coins.add(new Coin(2600 + (i * 55), groundTop + 30));
         }
 
         float[] arcY = {groundTop + 150, groundTop + 185, groundTop + 205, groundTop + 185, groundTop + 150};
         for (int i = 0; i < 5; i++) {
-            coins.add(new Coin(2850 + (i * 55), groundTop + arcY[i % arcY.length]));
+            coins.add(new Coin(3800 + (i * 35), groundTop + arcY[i % arcY.length]));
         }
     }
 
@@ -179,27 +185,31 @@ public class GameScreen implements Screen, InputProcessor {
             }
 
             Rectangle bounds = player.getBounds();
-            float groundLevel = groundPart1.y + groundPart1.height;
+            float groundLevel = ground1.y + ground1.height;
 
-            if (bounds.x + bounds.width > groundPart1.x && bounds.x < groundPart1.x + groundPart1.width) {
-                if (bounds.y <= groundLevel && player.getVelocityY() <= 0) {
-                    player.landOn(groundLevel);
-                }
+            if (bounds.x + bounds.width > ground1.x && bounds.x < ground1.x + ground1.width) {
+                if (bounds.y <= groundLevel && player.getVelocityY() <= 0) player.landOn(groundLevel);
+            }
+            if (bounds.x + bounds.width > ground2.x && bounds.x < ground2.x + ground2.width) {
+                if (bounds.y <= groundLevel && player.getVelocityY() <= 0) player.landOn(groundLevel);
+            }
+            if (bounds.x + bounds.width > ground3.x && bounds.x < ground3.x + ground3.width) {
+                if (bounds.y <= groundLevel && player.getVelocityY() <= 0) player.landOn(groundLevel);
+            }
+            if (bounds.x + bounds.width > ground4.x && bounds.x < ground4.x + ground4.width) {
+                if (bounds.y <= groundLevel && player.getVelocityY() <= 0) player.landOn(groundLevel);
             }
 
-            if (bounds.x + bounds.width > groundPart2.x && bounds.x < groundPart2.x + groundPart2.width) {
-                if (bounds.y <= groundLevel && player.getVelocityY() <= 0) {
-                    player.landOn(groundLevel);
-                }
-            }
-
-            // Queda na água (reinicia o nível)
             if (player.getY() < -50) {
-                Gdx.app.log("GameScreen", "O ator caiu na água! A reiniciar o nível...");
-                reiniciarJogo();
+                perderVidaEApojar();
             }
 
             Rectangle playerBody = getPlayerBody();
+            if (playerBody.overlaps(finishPortal)) {
+                Gdx.app.log("GameScreen", "Nível " + level + " concluído!");
+                avancarProximoNivel();
+            }
+
             for (Coin coin : coins) {
                 if (!coin.isCollected() && playerBody.overlaps(coin.getBounds())) {
                     coin.collect();
@@ -209,7 +219,6 @@ public class GameScreen implements Screen, InputProcessor {
             }
         }
 
-        // Seguir a câmara horizontalmente com base na posição do jogador
         camera.position.x = Math.max(VIEWPORT_WIDTH / 2f, Math.min(player.getX(), WORLD_WIDTH - VIEWPORT_WIDTH / 2f));
         camera.position.y = WORLD_HEIGHT / 2f;
         camera.update();
@@ -228,20 +237,51 @@ public class GameScreen implements Screen, InputProcessor {
         }
         batch.end();
 
-        // Desenhar Chão e Água
         shapeRenderer.setProjectionMatrix(camera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
 
-        desenharBlocoChao(groundPart1.x, groundPart1.width);
-        desenharBlocoChao(groundPart2.x, groundPart2.width);
+        desenharBlocoChao(ground1.x, ground1.width);
+        desenharBlocoChao(ground2.x, ground2.width);
+        desenharBlocoChao(ground3.x, ground3.width);
+        desenharBlocoChao(ground4.x, ground4.width);
 
-        // Fosso de água
-        shapeRenderer.setColor(0.1f, 0.4f, 0.8f, 1f);
-        shapeRenderer.rect(2100, 0, 300, 35);
-        shapeRenderer.setColor(0.2f, 0.6f, 0.9f, 1f);
-        for (float xw = 2105; xw < 2400; xw += 20) {
-            shapeRenderer.rect(xw, 25, 10, 5);
+        shapeRenderer.setColor(0.1f, 0.35f, 0.75f, 1f);
+        shapeRenderer.rect(800, 0, 180, 35);
+        shapeRenderer.setColor(0.2f, 0.55f, 0.95f, 1f);
+        for (float xw = 805; xw < 980; xw += 25) {
+            shapeRenderer.rect(xw, 24, 12, 4);
         }
+
+        shapeRenderer.setColor(0.1f, 0.35f, 0.75f, 1f);
+        shapeRenderer.rect(2000, 0, 250, 35);
+        shapeRenderer.setColor(0.2f, 0.55f, 0.95f, 1f);
+        for (float xw = 2005; xw < 2250; xw += 25) {
+            shapeRenderer.rect(xw, 24, 12, 4);
+        }
+
+        shapeRenderer.setColor(0.1f, 0.35f, 0.75f, 1f);
+        shapeRenderer.rect(3300, 0, 300, 35);
+        shapeRenderer.setColor(0.2f, 0.55f, 0.95f, 1f);
+        for (float xw = 3305; xw < 3600; xw += 25) {
+            shapeRenderer.rect(xw, 24, 12, 4);
+        }
+
+        float pulse = (float) Math.sin(stateTime * 6f) * 4f;
+        float rx = finishPortal.x;
+        float ry = finishPortal.y;
+
+        shapeRenderer.setColor(1f, 0.2f, 0.2f, 0.6f);
+        shapeRenderer.rect(rx - 4, ry, 68, 150 + pulse);
+        shapeRenderer.setColor(1f, 0.6f, 0.1f, 0.6f);
+        shapeRenderer.rect(rx + 2, ry, 56, 138 + pulse);
+        shapeRenderer.setColor(1f, 1f, 0.2f, 0.6f);
+        shapeRenderer.rect(rx + 8, ry, 44, 126 + pulse);
+        shapeRenderer.setColor(0.2f, 0.9f, 0.3f, 0.6f);
+        shapeRenderer.rect(rx + 14, ry, 32, 114 + pulse);
+        shapeRenderer.setColor(0.2f, 0.5f, 1f, 0.6f);
+        shapeRenderer.rect(rx + 20, ry, 20, 102 + pulse);
+        shapeRenderer.setColor(0.7f, 0.3f, 0.9f, 0.6f);
+        shapeRenderer.rect(rx + 24, ry, 12, 90 + pulse);
 
         shapeRenderer.end();
 
@@ -253,6 +293,38 @@ public class GameScreen implements Screen, InputProcessor {
 
         if (isPaused) {
             drawPauseMenu();
+        }
+    }
+
+    private void avancarProximoNivel() {
+        int nextLevel = level + 1;
+        if (nextLevel <= 3) {
+            game.setScreen(new GameScreen(game, nextLevel));
+        } else {
+            // Quando conclui o jogo, volta para o menu principal inicial (estado 0)
+            game.setScreen(new MenuScreen(game, 0));
+        }
+        dispose();
+    }
+
+    private void perderVidaEApojar() {
+        lives--;
+        Gdx.app.log("GameScreen", "Caiu na água! Vidas restantes: " + lives);
+
+        if (lives <= 0) {
+            Gdx.app.log("GameScreen", "Game Over! A retornar ao Menu Principal...");
+            // Quando as vidas chegam a 0, volta para o Menu Principal (estado 0)
+            game.setScreen(new MenuScreen(game, 0));
+            dispose();
+        } else {
+            if (player.getX() > 3300) {
+                player.setX(3200f);
+            } else if (player.getX() > 2000) {
+                player.setX(1900f);
+            } else {
+                player.setX(100f);
+            }
+            player.setY(ground1.y + ground1.height);
         }
     }
 
@@ -270,8 +342,10 @@ public class GameScreen implements Screen, InputProcessor {
     }
 
     private void reiniciarJogo() {
+        lives = 3;
+        coinsCollected = 0;
         player.setX(100f);
-        player.setY(groundPart1.y + groundPart1.height);
+        player.setY(ground1.y + ground1.height);
         createCoins();
     }
 
@@ -295,14 +369,14 @@ public class GameScreen implements Screen, InputProcessor {
                         reiniciarJogo();
                         isPaused = false;
                     } else if (btnMainMenu.contains(touchX, touchY) && i == 0) {
-                        game.setScreen(new MenuScreen(game));
+                        // Botão MENU no menu de pausa retorna ao Menu Principal
+                        game.setScreen(new MenuScreen(game, 0));
                         dispose();
                     }
                 } else {
                     if (btnLeft.contains(touchX, touchY)) touchLeft = true;
                     if (btnRight.contains(touchX, touchY)) touchRight = true;
 
-                    // Verifica se o toque está dentro do círculo do botão de saltar
                     if (Vector2.dst(touchX, touchY, btnJumpCenter.x, btnJumpCenter.y) <= btnJumpRadius) {
                         touchJump = true;
                     }
@@ -333,7 +407,6 @@ public class GameScreen implements Screen, InputProcessor {
         }
     }
 
-    // INTERFACE COM BOTÕES ESTILO CLÁSSICO DA IMAGEM (Quadrados à esquerda + Botão Redondo de Salto)
     private void drawUI() {
         batch.setProjectionMatrix(hudCamera.combined);
         shapeRenderer.setProjectionMatrix(hudCamera.combined);
@@ -343,20 +416,30 @@ public class GameScreen implements Screen, InputProcessor {
 
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
 
-        // Fundo cinzento semi-transparente para os botões direcionais quadrados
         shapeRenderer.setColor(0.3f, 0.3f, 0.35f, 0.7f);
         shapeRenderer.rect(btnLeft.x, btnLeft.y, btnLeft.width, btnLeft.height);
         shapeRenderer.rect(btnRight.x, btnRight.y, btnRight.width, btnRight.height);
 
-        // Botão de Pausa
         shapeRenderer.setColor(0.2f, 0.2f, 0.25f, 0.8f);
         shapeRenderer.rect(btnPause.x, btnPause.y, btnPause.width, btnPause.height);
 
-        // Botão Redondo de Salto (Circulo exterior e interior com tom dourado/madeira)
-        shapeRenderer.setColor(0.85f, 0.65f, 0.35f, 0.9f); // Borda exterior
+        shapeRenderer.setColor(0.85f, 0.65f, 0.35f, 0.9f);
         shapeRenderer.circle(btnJumpCenter.x, btnJumpCenter.y, btnJumpRadius);
-        shapeRenderer.setColor(0.95f, 0.82f, 0.55f, 0.95f); // Interior do botão
+        shapeRenderer.setColor(0.95f, 0.82f, 0.55f, 0.95f);
         shapeRenderer.circle(btnJumpCenter.x, btnJumpCenter.y, btnJumpRadius - 7f);
+
+        for (int i = 0; i < 3; i++) {
+            float hx = 220 + (i * 30);
+            float hy = WORLD_HEIGHT - 35;
+            if (i < lives) {
+                shapeRenderer.setColor(0.95f, 0.15f, 0.15f, 1f);
+            } else {
+                shapeRenderer.setColor(0.25f, 0.25f, 0.25f, 1f);
+            }
+            shapeRenderer.circle(hx - 5, hy + 3, 8);
+            shapeRenderer.circle(hx + 5, hy + 3, 8);
+            shapeRenderer.triangle(hx - 14, hy + 1, hx + 14, hy + 1, hx, hy - 14);
+        }
 
         shapeRenderer.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
@@ -367,13 +450,16 @@ public class GameScreen implements Screen, InputProcessor {
         font.draw(batch, ">", btnRight.x + 30, btnRight.y + 52);
         font.draw(batch, "||", btnPause.x + 14, btnPause.y + 28);
 
-        // Texto "SALTAR" dentro do botão redondo
         font.getData().setScale(1.2f);
-        font.setColor(Color.valueOf("5A3815")); // Cor castanha escura estilo retro
+        font.setColor(Color.valueOf("5A3815"));
         font.draw(batch, "SALTAR", btnJumpCenter.x - 38, btnJumpCenter.y + 6);
-        font.getData().setScale(2f); // Restaura a escala normal da fonte
+        font.getData().setScale(2f);
 
-        // Contador de moedas dourado
+        font.setColor(Color.BLACK);
+        font.draw(batch, "NIVEL " + level, VIEWPORT_WIDTH / 2f - 48, WORLD_HEIGHT - 18);
+        font.setColor(Color.YELLOW);
+        font.draw(batch, "NIVEL " + level, VIEWPORT_WIDTH / 2f - 50, WORLD_HEIGHT - 16);
+
         TextureRegion coinIcon = coinAnimation.getKeyFrame(stateTime, true);
         batch.draw(coinIcon, 20, WORLD_HEIGHT - 50, 32, 32);
 
