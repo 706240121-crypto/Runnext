@@ -81,6 +81,21 @@ public class GameScreen implements Screen, InputProcessor {
     private final Rectangle btnRestart;
     private final Rectangle btnMainMenu;
 
+    // Estados dos menus
+    private boolean isLevelComplete = false;
+    private boolean showingScore = false;
+    private boolean isGameOver = false; // NOVO: Estado de Game Over
+
+    // Botões do menu de Nível Completo
+    private final Rectangle btnLC_Next;
+    private final Rectangle btnLC_Restart;
+    private final Rectangle btnLC_Score;
+    private final Rectangle btnScore_Back;
+
+    // NOVO: Botões do menu de Game Over
+    private final Rectangle btnGO_Restart;
+    private final Rectangle btnGO_Menu;
+
     public GameScreen(Game game) {
         this(game, 1);
     }
@@ -132,9 +147,21 @@ public class GameScreen implements Screen, InputProcessor {
         btnPause = new Rectangle(375, WORLD_HEIGHT - 60, 50, 40);
 
         float centerX = VIEWPORT_WIDTH / 2f - 100;
+
+        // Botões do menu de pausa
         btnResume = new Rectangle(centerX, 300, 200, 50);
         btnRestart = new Rectangle(centerX, 230, 200, 50);
         btnMainMenu = new Rectangle(centerX, 160, 200, 50);
+
+        // Botões do menu de Nível Completo
+        btnLC_Next = new Rectangle(centerX, 280, 200, 50);
+        btnLC_Restart = new Rectangle(centerX, 210, 200, 50);
+        btnLC_Score = new Rectangle(centerX, 140, 200, 50);
+        btnScore_Back = new Rectangle(centerX, 140, 200, 50);
+
+        // NOVO: Botões do menu de Game Over
+        btnGO_Restart = new Rectangle(centerX, 220, 200, 50);
+        btnGO_Menu = new Rectangle(centerX, 150, 200, 50);
     }
 
     private void createCoins() {
@@ -174,7 +201,8 @@ public class GameScreen implements Screen, InputProcessor {
     public void render(float delta) {
         updateTouchInput();
 
-        if (!isPaused) {
+        // Só atualiza a física se NÃO estiver pausado, NÃO tiver completado o nível e NÃO for Game Over
+        if (!isPaused && !isLevelComplete && !isGameOver) {
             player.update(delta);
             stateTime += delta;
 
@@ -200,14 +228,15 @@ public class GameScreen implements Screen, InputProcessor {
                 if (bounds.y <= groundLevel && player.getVelocityY() <= 0) player.landOn(groundLevel);
             }
 
-            if (player.getY() < -50) {
+            if (player.getY() < 25) {
                 perderVidaEApojar();
             }
 
             Rectangle playerBody = getPlayerBody();
             if (playerBody.overlaps(finishPortal)) {
                 Gdx.app.log("GameScreen", "Nível " + level + " concluído!");
-                avancarProximoNivel();
+                isLevelComplete = true;
+                isPaused = true;
             }
 
             for (Coin coin : coins) {
@@ -217,6 +246,8 @@ public class GameScreen implements Screen, InputProcessor {
                     Gdx.app.log("GameScreen", "Moeda apanhada! Total: " + coinsCollected);
                 }
             }
+        } else if (!isLevelComplete && !isGameOver) {
+            stateTime += delta;
         }
 
         camera.position.x = Math.max(VIEWPORT_WIDTH / 2f, Math.min(player.getX(), WORLD_WIDTH - VIEWPORT_WIDTH / 2f));
@@ -291,20 +322,23 @@ public class GameScreen implements Screen, InputProcessor {
 
         drawUI();
 
-        if (isPaused) {
+        if (isGameOver) {
+            drawGameOverMenu();
+        } else if (isLevelComplete) {
+            drawLevelCompleteMenu();
+        } else if (isPaused) {
             drawPauseMenu();
         }
     }
 
-    private void avancarProximoNivel() {
+    private void irParaProximoNivelOuMenu() {
+        dispose();
         int nextLevel = level + 1;
         if (nextLevel <= 3) {
             game.setScreen(new GameScreen(game, nextLevel));
         } else {
-            // Quando conclui o jogo, volta para o menu principal inicial (estado 0)
             game.setScreen(new MenuScreen(game, 0));
         }
-        dispose();
     }
 
     private void perderVidaEApojar() {
@@ -312,10 +346,9 @@ public class GameScreen implements Screen, InputProcessor {
         Gdx.app.log("GameScreen", "Caiu na água! Vidas restantes: " + lives);
 
         if (lives <= 0) {
-            Gdx.app.log("GameScreen", "Game Over! A retornar ao Menu Principal...");
-            // Quando as vidas chegam a 0, volta para o Menu Principal (estado 0)
-            game.setScreen(new MenuScreen(game, 0));
-            dispose();
+            Gdx.app.log("GameScreen", "Game Over! Exibindo tela de YOU LOSE...");
+            isGameOver = true;
+            isPaused = true; // Pausa o jogo para mostrar o menu
         } else {
             if (player.getX() > 3300) {
                 player.setX(3200f);
@@ -346,6 +379,10 @@ public class GameScreen implements Screen, InputProcessor {
         coinsCollected = 0;
         player.setX(100f);
         player.setY(ground1.y + ground1.height);
+        isLevelComplete = false;
+        showingScore = false;
+        isGameOver = false; // Resetar estado de Game Over
+        isPaused = false;
         createCoins();
     }
 
@@ -362,6 +399,36 @@ public class GameScreen implements Screen, InputProcessor {
                 float touchX = touchPos.x;
                 float touchY = touchPos.y;
 
+                // Lógica do Menu de Game Over (NOVO)
+                if (isGameOver) {
+                    if (btnGO_Restart.contains(touchX, touchY) && i == 0) {
+                        reiniciarJogo();
+                    } else if (btnGO_Menu.contains(touchX, touchY) && i == 0) {
+                        dispose();
+                        game.setScreen(new MenuScreen(game, 0));
+                    }
+                    return;
+                }
+
+                // Lógica do Menu de Nível Completo
+                if (isLevelComplete) {
+                    if (!showingScore) {
+                        if (btnLC_Next.contains(touchX, touchY) && i == 0) {
+                            irParaProximoNivelOuMenu();
+                        } else if (btnLC_Restart.contains(touchX, touchY) && i == 0) {
+                            reiniciarJogo();
+                        } else if (btnLC_Score.contains(touchX, touchY) && i == 0) {
+                            showingScore = true;
+                        }
+                    } else {
+                        if (btnScore_Back.contains(touchX, touchY) && i == 0) {
+                            showingScore = false;
+                        }
+                    }
+                    return;
+                }
+
+                // Lógica do Menu de Pausa
                 if (isPaused) {
                     if (btnResume.contains(touchX, touchY) && i == 0) {
                         isPaused = false;
@@ -369,9 +436,8 @@ public class GameScreen implements Screen, InputProcessor {
                         reiniciarJogo();
                         isPaused = false;
                     } else if (btnMainMenu.contains(touchX, touchY) && i == 0) {
-                        // Botão MENU no menu de pausa retorna ao Menu Principal
-                        game.setScreen(new MenuScreen(game, 0));
                         dispose();
+                        game.setScreen(new MenuScreen(game, 0));
                     }
                 } else {
                     if (btnLeft.contains(touchX, touchY)) touchLeft = true;
@@ -388,7 +454,7 @@ public class GameScreen implements Screen, InputProcessor {
             }
         }
 
-        if (!isPaused) {
+        if (!isPaused && !isLevelComplete && !isGameOver) {
             if (touchLeft || Gdx.input.isKeyPressed(Input.Keys.LEFT) || Gdx.input.isKeyPressed(Input.Keys.A)) {
                 player.setMovingLeft(true);
             } else {
@@ -493,6 +559,103 @@ public class GameScreen implements Screen, InputProcessor {
         font.draw(batch, "REINICIAR", btnRestart.x + 45, btnRestart.y + 35);
         font.draw(batch, "MENU", btnMainMenu.x + 65, btnMainMenu.y + 35);
         batch.end();
+    }
+
+    // NOVO: Desenha o menu de Game Over
+    private void drawGameOverMenu() {
+        shapeRenderer.setProjectionMatrix(hudCamera.combined);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(0, 0, 0, 0.85f);
+        shapeRenderer.rect(0, 0, VIEWPORT_WIDTH, WORLD_HEIGHT);
+
+        shapeRenderer.setColor(Color.RED);
+        shapeRenderer.rect(btnGO_Restart.x, btnGO_Restart.y, btnGO_Restart.width, btnGO_Restart.height);
+        shapeRenderer.setColor(Color.GRAY);
+        shapeRenderer.rect(btnGO_Menu.x, btnGO_Menu.y, btnGO_Menu.width, btnGO_Menu.height);
+        shapeRenderer.end();
+
+        batch.setProjectionMatrix(hudCamera.combined);
+        batch.begin();
+
+        // TAMANHO DIMINUÍDO conforme pedido
+        fontGrande.getData().setScale(2.5f); // Era 3f, agora 2.5f para não ficar gigante
+        fontGrande.setColor(Color.RED);
+        fontGrande.draw(batch, "YOU LOSE", VIEWPORT_WIDTH / 2f - 75, 330);
+
+        font.setColor(Color.WHITE);
+        font.getData().setScale(1.5f); // Texto dos botões mais compacto
+        font.draw(batch, "REINICIAR", btnGO_Restart.x + 35, btnGO_Restart.y + 32);
+        font.draw(batch, "MENU PRINCIPAL", btnGO_Menu.x + 15, btnGO_Menu.y + 32);
+
+        // Restaurar escalas originais para não afetar o resto do jogo
+        font.getData().setScale(2f);
+        fontGrande.getData().setScale(3f);
+
+        batch.end();
+    }
+
+    private void drawLevelCompleteMenu() {
+        shapeRenderer.setProjectionMatrix(hudCamera.combined);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(0, 0, 0, 0.85f);
+        shapeRenderer.rect(0, 0, VIEWPORT_WIDTH, WORLD_HEIGHT);
+
+        if (!showingScore) {
+            shapeRenderer.setColor(Color.GREEN);
+            shapeRenderer.rect(btnLC_Next.x, btnLC_Next.y, btnLC_Next.width, btnLC_Next.height);
+            shapeRenderer.setColor(Color.ORANGE);
+            shapeRenderer.rect(btnLC_Restart.x, btnLC_Restart.y, btnLC_Restart.width, btnLC_Restart.height);
+            shapeRenderer.setColor(Color.BLUE);
+            shapeRenderer.rect(btnLC_Score.x, btnLC_Score.y, btnLC_Score.width, btnLC_Score.height);
+            shapeRenderer.end();
+
+            batch.setProjectionMatrix(hudCamera.combined);
+            batch.begin();
+
+            // TAMANHO DIMINUÍDO
+            fontGrande.getData().setScale(2.2f);
+            fontGrande.setColor(Color.YELLOW);
+            fontGrande.draw(batch, "NÍVEL COMPLETO!", VIEWPORT_WIDTH / 2f - 110, 360);
+
+            font.setColor(Color.WHITE);
+            font.getData().setScale(1.5f);
+            String nextText = (level < 3) ? "PRÓXIMO NÍVEL" : "MENU PRINCIPAL";
+            font.draw(batch, nextText, btnLC_Next.x + 20, btnLC_Next.y + 32);
+            font.draw(batch, "REINICIAR", btnLC_Restart.x + 40, btnLC_Restart.y + 32);
+            font.draw(batch, "VER PONTUAÇÃO", btnLC_Score.x + 15, btnLC_Score.y + 32);
+
+            // Restaurar escalas
+            font.getData().setScale(2f);
+            fontGrande.getData().setScale(3f);
+
+            batch.end();
+        } else {
+            shapeRenderer.setColor(Color.GRAY);
+            shapeRenderer.rect(btnScore_Back.x, btnScore_Back.y, btnScore_Back.width, btnScore_Back.height);
+            shapeRenderer.end();
+
+            batch.setProjectionMatrix(hudCamera.combined);
+            batch.begin();
+
+            // TAMANHO DIMINUÍDO
+            fontGrande.getData().setScale(2.2f);
+            fontGrande.setColor(Color.YELLOW);
+            fontGrande.draw(batch, "PONTUAÇÃO", VIEWPORT_WIDTH / 2f - 80, 360);
+
+            font.setColor(Color.WHITE);
+            font.getData().setScale(1.8f); // Escala reduzida para caber melhor
+            font.draw(batch, "Vidas Restantes: " + lives, VIEWPORT_WIDTH / 2f - 110, 290);
+            font.draw(batch, "Moedas Apanhadas: " + coinsCollected, VIEWPORT_WIDTH / 2f - 130, 240);
+
+            font.getData().setScale(1.5f);
+            font.draw(batch, "VOLTAR", btnScore_Back.x + 50, btnScore_Back.y + 32);
+
+            // Restaurar escalas
+            font.getData().setScale(2f);
+            fontGrande.getData().setScale(3f);
+
+            batch.end();
+        }
     }
 
     @Override public boolean touchDown(int screenX, int screenY, int pointer, int button) { return true; }
