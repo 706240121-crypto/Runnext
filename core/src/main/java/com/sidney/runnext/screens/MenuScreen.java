@@ -4,8 +4,6 @@ import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
-import com.badlogic.gdx.graphics.Color;
-import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
@@ -14,6 +12,7 @@ import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
+import com.sidney.runnext.Progress;
 
 public class MenuScreen implements Screen {
 
@@ -23,14 +22,13 @@ public class MenuScreen implements Screen {
     private final Viewport viewport;
     private final SpriteBatch batch;
     private final ShapeRenderer shapeRenderer;
-    private final BitmapFont fontGrande;
-    private final BitmapFont fontMedia;
+    private final BitmapFont font;
 
     private int menuState = 0; // 0 = Menu principal, 1 = Seleção de Níveis
 
+    private final int maxUnlocked;
     private final Rectangle btnJogar;
-    private final Rectangle btnNivel1;
-    private final Rectangle btnNivel2;
+    private final Rectangle[] btnNivel = new Rectangle[Progress.TOTAL_LEVELS];
 
     public MenuScreen(Game game) {
         this(game, 0);
@@ -44,75 +42,71 @@ public class MenuScreen implements Screen {
         viewport = new FitViewport(800, 480, camera);
         batch = new SpriteBatch();
         shapeRenderer = new ShapeRenderer();
+        font = new BitmapFont();
 
-        fontGrande = new BitmapFont();
-        fontGrande.getData().setScale(4f);
-        fontGrande.setColor(Color.WHITE);
+        maxUnlocked = Progress.getMaxUnlocked();
 
-        fontMedia = new BitmapFont();
-        fontMedia.getData().setScale(2.2f);
-        fontMedia.setColor(Color.WHITE);
-
-        float centroX = 400f;
-        btnJogar = new Rectangle(centroX - 100, 170, 200, 50);
-        btnNivel1 = new Rectangle(centroX - 130, 230, 260, 50);
-        btnNivel2 = new Rectangle(centroX - 130, 150, 260, 50);
+        btnJogar = MenuStyle.button(1);
+        for (int i = 0; i < btnNivel.length; i++) {
+            btnNivel[i] = MenuStyle.button(i);
+        }
     }
 
-    @Override public void show() {}
+    @Override
+    public void show() {
+        // Garante que nenhum ecrã antigo (já destruído) continua a receber toques
+        Gdx.input.setInputProcessor(null);
+    }
 
     @Override
     public void render(float delta) {
-        Gdx.gl.glClearColor(0.1f, 0.1f, 0.15f, 1f);
-        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+        MenuStyle.clear();
 
         camera.update();
         batch.setProjectionMatrix(camera.combined);
         shapeRenderer.setProjectionMatrix(camera.combined);
 
-        float centroX = 400f;
-
         if (menuState == 0) {
-            renderMenuPrincipal(centroX);
+            renderMenuPrincipal();
         } else {
-            renderSelecaoNivel(centroX);
+            renderSelecaoNivel();
         }
 
+        // Tem de ser a ÚLTIMA coisa do render: pode trocar de ecrã e destruir este.
         if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)) {
             if (menuState == 0) menuState = 1;
-            else {
-                game.setScreen(new GameScreen(game, 1));
-                dispose();
-            }
-        }
-        if (Gdx.input.justTouched()) {
+            else iniciarNivel(1);
+        } else if (Gdx.input.justTouched()) {
             handleTouchInput();
         }
     }
 
-    private void renderMenuPrincipal(float centroX) {
+    private void renderMenuPrincipal() {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        shapeRenderer.setColor(Color.BLUE);
-        shapeRenderer.rect(btnJogar.x, btnJogar.y, btnJogar.width, btnJogar.height);
+        MenuStyle.drawButton(shapeRenderer, btnJogar, true);
         shapeRenderer.end();
 
         batch.begin();
-        fontGrande.draw(batch, "RUNNEXT", centroX - 140, 350);
-        fontMedia.draw(batch, "JOGAR", centroX - 45, btnJogar.y + 35);
+        MenuStyle.drawTitle(batch, font, "RUNNEXT", MenuStyle.TITLE_Y);
+        MenuStyle.drawButtonLabel(batch, font, "JOGAR", btnJogar, true);
         batch.end();
     }
 
-    private void renderSelecaoNivel(float centroX) {
+    private void renderSelecaoNivel() {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        shapeRenderer.setColor(Color.BLUE);
-        shapeRenderer.rect(btnNivel1.x, btnNivel1.y, btnNivel1.width, btnNivel1.height);
-        shapeRenderer.rect(btnNivel2.x, btnNivel2.y, btnNivel2.width, btnNivel2.height);
+        for (int i = 0; i < btnNivel.length; i++) {
+            boolean livre = (i + 1) <= maxUnlocked;
+            MenuStyle.drawButton(shapeRenderer, btnNivel[i], livre);
+            if (!livre) MenuStyle.drawLock(shapeRenderer, btnNivel[i]);
+        }
         shapeRenderer.end();
 
         batch.begin();
-        fontGrande.draw(batch, "RUNNEXT", centroX - 140, 370);
-        fontMedia.draw(batch, "NIVEL 1", centroX - 55, btnNivel1.y + 35);
-        fontMedia.draw(batch, "NIVEL 2", centroX - 55, btnNivel2.y + 35);
+        MenuStyle.drawTitle(batch, font, "RUNNEXT", MenuStyle.TITLE_Y);
+        for (int i = 0; i < btnNivel.length; i++) {
+            boolean livre = (i + 1) <= maxUnlocked;
+            MenuStyle.drawButtonLabel(batch, font, "NIVEL " + (i + 1), btnNivel[i], livre);
+        }
         batch.end();
     }
 
@@ -127,14 +121,19 @@ public class MenuScreen implements Screen {
                 menuState = 1;
             }
         } else {
-            if (btnNivel1.contains(x, y)) {
-                game.setScreen(new GameScreen(game, 1));
-                dispose();
-            } else if (btnNivel2.contains(x, y)) {
-                game.setScreen(new GameScreen(game, 2));
-                dispose();
+            for (int i = 0; i < btnNivel.length; i++) {
+                boolean livre = (i + 1) <= maxUnlocked;
+                if (livre && btnNivel[i].contains(x, y)) {
+                    iniciarNivel(i + 1);
+                    return;
+                }
             }
         }
+    }
+
+    private void iniciarNivel(int nivel) {
+        game.setScreen(new GameScreen(game, nivel));
+        dispose();
     }
 
     @Override public void resize(int width, int height) { viewport.update(width, height, true); }
@@ -146,7 +145,6 @@ public class MenuScreen implements Screen {
     public void dispose() {
         batch.dispose();
         shapeRenderer.dispose();
-        fontGrande.dispose();
-        fontMedia.dispose();
+        font.dispose();
     }
 }

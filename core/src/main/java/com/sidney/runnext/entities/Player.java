@@ -183,6 +183,10 @@ public class Player {
     public void setX(float x) { this.x = x; }
     public float getY() { return y; }
     public void setY(float y) { this.y = y; }
+
+    // NOVO: altura dos pés (usada pelo GameScreen para detectar aterragem no chão)
+    public float getFootY() { return y + FOOT_OFFSET; }
+
     public void setMovingLeft(boolean moving) { this.movingLeft = moving; }
     public void setMovingRight(boolean moving) { this.movingRight = moving; }
 }

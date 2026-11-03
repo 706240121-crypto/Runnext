@@ -20,6 +20,7 @@ import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
+import com.sidney.runnext.Progress;
 import com.sidney.runnext.entities.Coin;
 import com.sidney.runnext.entities.Player;
 
@@ -42,8 +43,8 @@ public class GameScreen implements Screen, InputProcessor {
     private final Viewport viewport;
     private final ShapeRenderer shapeRenderer;
     private final SpriteBatch batch;
-    private final BitmapFont font;
-    private final BitmapFont fontGrande;
+    private final BitmapFont font;      // texto do HUD (moedas, botões)
+    private final BitmapFont menuFont;  // texto dos menus (escala definida pelo MenuStyle)
 
     private final Player player;
 
@@ -51,6 +52,12 @@ public class GameScreen implements Screen, InputProcessor {
     private final Rectangle ground2;
     private final Rectangle ground3;
     private final Rectangle ground4;
+
+    // Zonas de água (sem chão por baixo)
+    private final Rectangle water1;
+    private final Rectangle water2;
+    private final Rectangle water3;
+
     private final Rectangle finishPortal;
 
     private final int level;
@@ -77,24 +84,35 @@ public class GameScreen implements Screen, InputProcessor {
     private final Rectangle btnPause;
     private boolean isPaused = false;
 
+    // Menu de pausa
     private final Rectangle btnResume;
     private final Rectangle btnRestart;
     private final Rectangle btnMainMenu;
+    private final Rectangle[] pauseButtons;
+    private final String[] pauseLabels = {"CONTINUAR", "REINICIAR", "MENU PRINCIPAL"};
 
     // Estados dos menus
     private boolean isLevelComplete = false;
     private boolean showingScore = false;
-    private boolean isGameOver = false; // NOVO: Estado de Game Over
+    private boolean isGameOver = false;
 
-    // Botões do menu de Nível Completo
+    // Menu de Nível Completo
     private final Rectangle btnLC_Next;
     private final Rectangle btnLC_Restart;
     private final Rectangle btnLC_Score;
     private final Rectangle btnScore_Back;
+    private final Rectangle[] levelCompleteButtons;
+    private final String[] levelCompleteLabels;
 
-    // NOVO: Botões do menu de Game Over
+    // Menu de Game Over
     private final Rectangle btnGO_Restart;
     private final Rectangle btnGO_Menu;
+    private final Rectangle[] gameOverButtons;
+    private final String[] gameOverLabels = {"REINICIAR", "MENU PRINCIPAL"};
+
+    // Ecrã para onde vamos trocar no FIM do frame.
+    // (Trocar de ecrã a meio do render e destruir este ecrã fazia o jogo fechar.)
+    private Screen pendingScreen = null;
 
     public GameScreen(Game game) {
         this(game, 1);
@@ -116,9 +134,7 @@ public class GameScreen implements Screen, InputProcessor {
         font.getData().setScale(2f);
         font.setColor(Color.BLACK);
 
-        fontGrande = new BitmapFont();
-        fontGrande.getData().setScale(3f);
-        fontGrande.setColor(Color.WHITE);
+        menuFont = new BitmapFont();
 
         backgroundTexture = new Texture(Gdx.files.internal(BACKGROUND_FILES[this.level - 1]));
         backgroundTexture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
@@ -129,10 +145,16 @@ public class GameScreen implements Screen, InputProcessor {
         TextureRegion[][] coinFrames = TextureRegion.split(coinTexture, 16, 16);
         coinAnimation = new Animation<>(0.12f, coinFrames[0]);
 
-        ground1 = new Rectangle(0, 0, 800, 45);
-        ground2 = new Rectangle(980, 0, 1020, 45);
-        ground3 = new Rectangle(2250, 0, 1050, 45);
-        ground4 = new Rectangle(3600, 0, 600, 45);
+        // Água (antes: 180 / 250 / 300). Mude só estas larguras para ajustar.
+        water1 = new Rectangle(800, 0, 120, 35);
+        water2 = new Rectangle(2000, 0, 160, 35);
+        water3 = new Rectangle(3300, 0, 180, 35);
+
+        // O chão é o que sobra entre as águas
+        ground1 = new Rectangle(0, 0, water1.x, 45);
+        ground2 = new Rectangle(water1.x + water1.width, 0, water2.x - (water1.x + water1.width), 45);
+        ground3 = new Rectangle(water2.x + water2.width, 0, water3.x - (water2.x + water2.width), 45);
+        ground4 = new Rectangle(water3.x + water3.width, 0, WORLD_WIDTH - (water3.x + water3.width), 45);
 
         finishPortal = new Rectangle(4050, 45, 60, 150);
 
@@ -146,22 +168,26 @@ public class GameScreen implements Screen, InputProcessor {
 
         btnPause = new Rectangle(375, WORLD_HEIGHT - 60, 50, 40);
 
-        float centerX = VIEWPORT_WIDTH / 2f - 100;
+        // Todos os menus usam as mesmas posições/estilo do menu inicial (MenuStyle)
+        btnResume = MenuStyle.button(0);
+        btnRestart = MenuStyle.button(1);
+        btnMainMenu = MenuStyle.button(2);
+        pauseButtons = new Rectangle[] {btnResume, btnRestart, btnMainMenu};
 
-        // Botões do menu de pausa
-        btnResume = new Rectangle(centerX, 300, 200, 50);
-        btnRestart = new Rectangle(centerX, 230, 200, 50);
-        btnMainMenu = new Rectangle(centerX, 160, 200, 50);
+        btnLC_Next = MenuStyle.button(0);
+        btnLC_Restart = MenuStyle.button(1);
+        btnLC_Score = MenuStyle.button(2);
+        btnScore_Back = MenuStyle.button(2);
+        levelCompleteButtons = new Rectangle[] {btnLC_Next, btnLC_Restart, btnLC_Score};
+        levelCompleteLabels = new String[] {
+            (this.level < Progress.TOTAL_LEVELS) ? "PRÓXIMO NÍVEL" : "MENU PRINCIPAL",
+            "REINICIAR",
+            "VER PONTUAÇÃO"
+        };
 
-        // Botões do menu de Nível Completo
-        btnLC_Next = new Rectangle(centerX, 280, 200, 50);
-        btnLC_Restart = new Rectangle(centerX, 210, 200, 50);
-        btnLC_Score = new Rectangle(centerX, 140, 200, 50);
-        btnScore_Back = new Rectangle(centerX, 140, 200, 50);
-
-        // NOVO: Botões do menu de Game Over
-        btnGO_Restart = new Rectangle(centerX, 220, 200, 50);
-        btnGO_Menu = new Rectangle(centerX, 150, 200, 50);
+        btnGO_Restart = MenuStyle.button(0);
+        btnGO_Menu = MenuStyle.button(1);
+        gameOverButtons = new Rectangle[] {btnGO_Restart, btnGO_Menu};
     }
 
     private void createCoins() {
@@ -191,6 +217,23 @@ public class GameScreen implements Screen, InputProcessor {
         return new Rectangle(b.x + 25, b.y + 12, b.width - 50, b.height - 25);
     }
 
+    // true se o ponto x (centro dos pés) está sobre algum bloco de chão
+    private boolean isOverGround(float x) {
+        return (x >= ground1.x && x <= ground1.x + ground1.width)
+            || (x >= ground2.x && x <= ground2.x + ground2.width)
+            || (x >= ground3.x && x <= ground3.x + ground3.width)
+            || (x >= ground4.x && x <= ground4.x + ground4.width);
+    }
+
+    // Converte um toque no ecrã para as coordenadas do HUD/menus (800x480),
+    // tendo em conta as barras pretas do FitViewport.
+    private Vector3 toHud(int screenX, int screenY) {
+        Vector3 v = new Vector3(screenX, screenY, 0);
+        hudCamera.unproject(v, viewport.getScreenX(), viewport.getScreenY(),
+            viewport.getScreenWidth(), viewport.getScreenHeight());
+        return v;
+    }
+
     @Override
     public void show() {
         Gdx.app.log("GameScreen", "=== TELA INICIADA (nível " + level + ") ===");
@@ -199,10 +242,18 @@ public class GameScreen implements Screen, InputProcessor {
 
     @Override
     public void render(float delta) {
-        updateTouchInput();
+        handleMenuTouch();   // toques nos menus (pausa, nível completo, game over)
+        updateTouchInput();  // controlos do jogo (botões no ecrã e teclado)
+
+        // Troca de ecrã SÓ aqui, antes de usar o batch/fontes deste ecrã neste frame
+        if (pendingScreen != null) {
+            trocarEcra();
+            return;
+        }
 
         // Só atualiza a física se NÃO estiver pausado, NÃO tiver completado o nível e NÃO for Game Over
         if (!isPaused && !isLevelComplete && !isGameOver) {
+            float prevFootY = player.getFootY(); // posição dos pés antes do update
             player.update(delta);
             stateTime += delta;
 
@@ -212,20 +263,15 @@ public class GameScreen implements Screen, InputProcessor {
                 player.setX(WORLD_WIDTH - Player.WIDTH);
             }
 
-            Rectangle bounds = player.getBounds();
+            // Aterragem pelo centro dos pés, só se vinha de cima do chão
+            Rectangle body = getPlayerBody();
+            float feetX = body.x + body.width / 2f;
             float groundLevel = ground1.y + ground1.height;
 
-            if (bounds.x + bounds.width > ground1.x && bounds.x < ground1.x + ground1.width) {
-                if (bounds.y <= groundLevel && player.getVelocityY() <= 0) player.landOn(groundLevel);
-            }
-            if (bounds.x + bounds.width > ground2.x && bounds.x < ground2.x + ground2.width) {
-                if (bounds.y <= groundLevel && player.getVelocityY() <= 0) player.landOn(groundLevel);
-            }
-            if (bounds.x + bounds.width > ground3.x && bounds.x < ground3.x + ground3.width) {
-                if (bounds.y <= groundLevel && player.getVelocityY() <= 0) player.landOn(groundLevel);
-            }
-            if (bounds.x + bounds.width > ground4.x && bounds.x < ground4.x + ground4.width) {
-                if (bounds.y <= groundLevel && player.getVelocityY() <= 0) player.landOn(groundLevel);
+            if (player.getVelocityY() <= 0 && prevFootY >= groundLevel - 1f && player.getFootY() <= groundLevel) {
+                if (isOverGround(feetX)) {
+                    player.landOn(groundLevel);
+                }
             }
 
             if (player.getY() < 25) {
@@ -237,6 +283,7 @@ public class GameScreen implements Screen, InputProcessor {
                 Gdx.app.log("GameScreen", "Nível " + level + " concluído!");
                 isLevelComplete = true;
                 isPaused = true;
+                Progress.unlock(level + 1); // desbloqueia o próximo nível (fica guardado)
             }
 
             for (Coin coin : coins) {
@@ -250,6 +297,31 @@ public class GameScreen implements Screen, InputProcessor {
             stateTime += delta;
         }
 
+        // Menus: ocupam o ecrã todo, com o mesmo visual do menu inicial
+        if (isGameOver) {
+            drawMenu("YOU LOSE", gameOverButtons, gameOverLabels);
+        } else if (isLevelComplete) {
+            if (showingScore) {
+                drawScoreScreen();
+            } else {
+                drawMenu("NÍVEL COMPLETO!", levelCompleteButtons, levelCompleteLabels);
+            }
+        } else if (isPaused) {
+            drawMenu("PAUSADO", pauseButtons, pauseLabels);
+        } else {
+            drawWorld();
+            drawUI();
+        }
+    }
+
+    private void trocarEcra() {
+        Screen destino = pendingScreen;
+        pendingScreen = null;
+        dispose();
+        game.setScreen(destino);
+    }
+
+    private void drawWorld() {
         camera.position.x = Math.max(VIEWPORT_WIDTH / 2f, Math.min(player.getX(), WORLD_WIDTH - VIEWPORT_WIDTH / 2f));
         camera.position.y = WORLD_HEIGHT / 2f;
         camera.update();
@@ -276,26 +348,9 @@ public class GameScreen implements Screen, InputProcessor {
         desenharBlocoChao(ground3.x, ground3.width);
         desenharBlocoChao(ground4.x, ground4.width);
 
-        shapeRenderer.setColor(0.1f, 0.35f, 0.75f, 1f);
-        shapeRenderer.rect(800, 0, 180, 35);
-        shapeRenderer.setColor(0.2f, 0.55f, 0.95f, 1f);
-        for (float xw = 805; xw < 980; xw += 25) {
-            shapeRenderer.rect(xw, 24, 12, 4);
-        }
-
-        shapeRenderer.setColor(0.1f, 0.35f, 0.75f, 1f);
-        shapeRenderer.rect(2000, 0, 250, 35);
-        shapeRenderer.setColor(0.2f, 0.55f, 0.95f, 1f);
-        for (float xw = 2005; xw < 2250; xw += 25) {
-            shapeRenderer.rect(xw, 24, 12, 4);
-        }
-
-        shapeRenderer.setColor(0.1f, 0.35f, 0.75f, 1f);
-        shapeRenderer.rect(3300, 0, 300, 35);
-        shapeRenderer.setColor(0.2f, 0.55f, 0.95f, 1f);
-        for (float xw = 3305; xw < 3600; xw += 25) {
-            shapeRenderer.rect(xw, 24, 12, 4);
-        }
+        desenharAgua(water1);
+        desenharAgua(water2);
+        desenharAgua(water3);
 
         float pulse = (float) Math.sin(stateTime * 6f) * 4f;
         float rx = finishPortal.x;
@@ -319,25 +374,14 @@ public class GameScreen implements Screen, InputProcessor {
         batch.begin();
         player.render(batch);
         batch.end();
-
-        drawUI();
-
-        if (isGameOver) {
-            drawGameOverMenu();
-        } else if (isLevelComplete) {
-            drawLevelCompleteMenu();
-        } else if (isPaused) {
-            drawPauseMenu();
-        }
     }
 
     private void irParaProximoNivelOuMenu() {
-        dispose();
         int nextLevel = level + 1;
-        if (nextLevel <= 3) {
-            game.setScreen(new GameScreen(game, nextLevel));
+        if (nextLevel <= Progress.TOTAL_LEVELS) {
+            pendingScreen = new GameScreen(game, nextLevel);
         } else {
-            game.setScreen(new MenuScreen(game, 0));
+            pendingScreen = new MenuScreen(game, 0);
         }
     }
 
@@ -350,10 +394,12 @@ public class GameScreen implements Screen, InputProcessor {
             isGameOver = true;
             isPaused = true; // Pausa o jogo para mostrar o menu
         } else {
-            if (player.getX() > 3300) {
-                player.setX(3200f);
-            } else if (player.getX() > 2000) {
-                player.setX(1900f);
+            // Respawn baseado no centro do corpo e nas posições da água
+            float cx = getPlayerBody().x + getPlayerBody().width / 2f;
+            if (cx > water3.x - 100f) {
+                player.setX(water3.x - 100f);   // 3200
+            } else if (cx > water2.x - 100f) {
+                player.setX(water2.x - 100f);   // 1900
             } else {
                 player.setX(100f);
             }
@@ -374,6 +420,16 @@ public class GameScreen implements Screen, InputProcessor {
         }
     }
 
+    // Desenha um bloco de água a partir do seu retângulo
+    private void desenharAgua(Rectangle w) {
+        shapeRenderer.setColor(0.1f, 0.35f, 0.75f, 1f);
+        shapeRenderer.rect(w.x, w.y, w.width, w.height);
+        shapeRenderer.setColor(0.2f, 0.55f, 0.95f, 1f);
+        for (float xw = w.x + 5; xw + 12 <= w.x + w.width; xw += 25) {
+            shapeRenderer.rect(xw, 24, 12, 4);
+        }
+    }
+
     private void reiniciarJogo() {
         lives = 3;
         coinsCollected = 0;
@@ -381,95 +437,88 @@ public class GameScreen implements Screen, InputProcessor {
         player.setY(ground1.y + ground1.height);
         isLevelComplete = false;
         showingScore = false;
-        isGameOver = false; // Resetar estado de Game Over
+        isGameOver = false;
         isPaused = false;
         createCoins();
     }
 
+    // Toques nos botões dos menus (só um toque novo por vez, não repete enquanto o dedo está pousado)
+    private void handleMenuTouch() {
+        boolean menuAtivo = isGameOver || isLevelComplete || isPaused;
+        if (!menuAtivo || !Gdx.input.justTouched()) return;
+
+        Vector3 t = toHud(Gdx.input.getX(), Gdx.input.getY());
+
+        if (isGameOver) {
+            if (btnGO_Restart.contains(t.x, t.y)) {
+                reiniciarJogo();
+            } else if (btnGO_Menu.contains(t.x, t.y)) {
+                pendingScreen = new MenuScreen(game, 0);
+            }
+        } else if (isLevelComplete) {
+            if (!showingScore) {
+                if (btnLC_Next.contains(t.x, t.y)) {
+                    irParaProximoNivelOuMenu();
+                } else if (btnLC_Restart.contains(t.x, t.y)) {
+                    reiniciarJogo();
+                } else if (btnLC_Score.contains(t.x, t.y)) {
+                    showingScore = true;
+                }
+            } else if (btnScore_Back.contains(t.x, t.y)) {
+                showingScore = false;
+            }
+        } else { // pausa
+            if (btnResume.contains(t.x, t.y)) {
+                isPaused = false;
+            } else if (btnRestart.contains(t.x, t.y)) {
+                reiniciarJogo();
+            } else if (btnMainMenu.contains(t.x, t.y)) {
+                pendingScreen = new MenuScreen(game, 0);
+            }
+        }
+    }
+
+    // Controlos do jogo (botões no ecrã + teclado)
     private void updateTouchInput() {
         touchLeft = false;
         touchRight = false;
         touchJump = false;
 
+        if (isPaused || isLevelComplete || isGameOver) return;
+
         for (int i = 0; i < 3; i++) {
             if (Gdx.input.isTouched(i)) {
-                Vector3 touchPos = new Vector3(Gdx.input.getX(i), Gdx.input.getY(i), 0);
-                hudCamera.unproject(touchPos);
-
+                Vector3 touchPos = toHud(Gdx.input.getX(i), Gdx.input.getY(i));
                 float touchX = touchPos.x;
                 float touchY = touchPos.y;
 
-                // Lógica do Menu de Game Over (NOVO)
-                if (isGameOver) {
-                    if (btnGO_Restart.contains(touchX, touchY) && i == 0) {
-                        reiniciarJogo();
-                    } else if (btnGO_Menu.contains(touchX, touchY) && i == 0) {
-                        dispose();
-                        game.setScreen(new MenuScreen(game, 0));
-                    }
-                    return;
+                if (btnLeft.contains(touchX, touchY)) touchLeft = true;
+                if (btnRight.contains(touchX, touchY)) touchRight = true;
+
+                if (Vector2.dst(touchX, touchY, btnJumpCenter.x, btnJumpCenter.y) <= btnJumpRadius) {
+                    touchJump = true;
                 }
 
-                // Lógica do Menu de Nível Completo
-                if (isLevelComplete) {
-                    if (!showingScore) {
-                        if (btnLC_Next.contains(touchX, touchY) && i == 0) {
-                            irParaProximoNivelOuMenu();
-                        } else if (btnLC_Restart.contains(touchX, touchY) && i == 0) {
-                            reiniciarJogo();
-                        } else if (btnLC_Score.contains(touchX, touchY) && i == 0) {
-                            showingScore = true;
-                        }
-                    } else {
-                        if (btnScore_Back.contains(touchX, touchY) && i == 0) {
-                            showingScore = false;
-                        }
-                    }
-                    return;
-                }
-
-                // Lógica do Menu de Pausa
-                if (isPaused) {
-                    if (btnResume.contains(touchX, touchY) && i == 0) {
-                        isPaused = false;
-                    } else if (btnRestart.contains(touchX, touchY) && i == 0) {
-                        reiniciarJogo();
-                        isPaused = false;
-                    } else if (btnMainMenu.contains(touchX, touchY) && i == 0) {
-                        dispose();
-                        game.setScreen(new MenuScreen(game, 0));
-                    }
-                } else {
-                    if (btnLeft.contains(touchX, touchY)) touchLeft = true;
-                    if (btnRight.contains(touchX, touchY)) touchRight = true;
-
-                    if (Vector2.dst(touchX, touchY, btnJumpCenter.x, btnJumpCenter.y) <= btnJumpRadius) {
-                        touchJump = true;
-                    }
-
-                    if (btnPause.contains(touchX, touchY) && i == 0) {
-                        isPaused = true;
-                    }
+                if (btnPause.contains(touchX, touchY) && i == 0) {
+                    isPaused = true;
                 }
             }
         }
 
-        if (!isPaused && !isLevelComplete && !isGameOver) {
-            if (touchLeft || Gdx.input.isKeyPressed(Input.Keys.LEFT) || Gdx.input.isKeyPressed(Input.Keys.A)) {
-                player.setMovingLeft(true);
-            } else {
-                player.setMovingLeft(false);
-            }
+        if (touchLeft || Gdx.input.isKeyPressed(Input.Keys.LEFT) || Gdx.input.isKeyPressed(Input.Keys.A)) {
+            player.setMovingLeft(true);
+        } else {
+            player.setMovingLeft(false);
+        }
 
-            if (touchRight || Gdx.input.isKeyPressed(Input.Keys.RIGHT) || Gdx.input.isKeyPressed(Input.Keys.D)) {
-                player.setMovingRight(true);
-            } else {
-                player.setMovingRight(false);
-            }
+        if (touchRight || Gdx.input.isKeyPressed(Input.Keys.RIGHT) || Gdx.input.isKeyPressed(Input.Keys.D)) {
+            player.setMovingRight(true);
+        } else {
+            player.setMovingRight(false);
+        }
 
-            if (touchJump || Gdx.input.isKeyPressed(Input.Keys.SPACE) || Gdx.input.isKeyPressed(Input.Keys.UP) || Gdx.input.isKeyPressed(Input.Keys.W)) {
-                player.jump();
-            }
+        if (touchJump || Gdx.input.isKeyPressed(Input.Keys.SPACE) || Gdx.input.isKeyPressed(Input.Keys.UP) || Gdx.input.isKeyPressed(Input.Keys.W)) {
+            player.jump();
         }
     }
 
@@ -537,125 +586,41 @@ public class GameScreen implements Screen, InputProcessor {
         batch.end();
     }
 
-    private void drawPauseMenu() {
+    // Menu genérico (pausa, nível completo, game over) com o estilo do menu inicial
+    private void drawMenu(String titulo, Rectangle[] botoes, String[] textos) {
+        MenuStyle.clear();
+
         shapeRenderer.setProjectionMatrix(hudCamera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        shapeRenderer.setColor(0, 0, 0, 0.7f);
-        shapeRenderer.rect(0, 0, VIEWPORT_WIDTH, WORLD_HEIGHT);
-
-        shapeRenderer.setColor(Color.BLUE);
-        shapeRenderer.rect(btnResume.x, btnResume.y, btnResume.width, btnResume.height);
-        shapeRenderer.rect(btnRestart.x, btnRestart.y, btnRestart.width, btnRestart.height);
-        shapeRenderer.rect(btnMainMenu.x, btnMainMenu.y, btnMainMenu.width, btnMainMenu.height);
-        shapeRenderer.end();
-
-        batch.setProjectionMatrix(hudCamera.combined);
-        batch.begin();
-        fontGrande.setColor(Color.WHITE);
-        fontGrande.draw(batch, "PAUSADO", VIEWPORT_WIDTH / 2f - 80, 400);
-
-        font.setColor(Color.WHITE);
-        font.draw(batch, "CONTINUAR", btnResume.x + 40, btnResume.y + 35);
-        font.draw(batch, "REINICIAR", btnRestart.x + 45, btnRestart.y + 35);
-        font.draw(batch, "MENU", btnMainMenu.x + 65, btnMainMenu.y + 35);
-        batch.end();
-    }
-
-    // NOVO: Desenha o menu de Game Over
-    private void drawGameOverMenu() {
-        shapeRenderer.setProjectionMatrix(hudCamera.combined);
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        shapeRenderer.setColor(0, 0, 0, 0.85f);
-        shapeRenderer.rect(0, 0, VIEWPORT_WIDTH, WORLD_HEIGHT);
-
-        shapeRenderer.setColor(Color.RED);
-        shapeRenderer.rect(btnGO_Restart.x, btnGO_Restart.y, btnGO_Restart.width, btnGO_Restart.height);
-        shapeRenderer.setColor(Color.GRAY);
-        shapeRenderer.rect(btnGO_Menu.x, btnGO_Menu.y, btnGO_Menu.width, btnGO_Menu.height);
-        shapeRenderer.end();
-
-        batch.setProjectionMatrix(hudCamera.combined);
-        batch.begin();
-
-        // TAMANHO DIMINUÍDO conforme pedido
-        fontGrande.getData().setScale(2.5f); // Era 3f, agora 2.5f para não ficar gigante
-        fontGrande.setColor(Color.RED);
-        fontGrande.draw(batch, "YOU LOSE", VIEWPORT_WIDTH / 2f - 75, 330);
-
-        font.setColor(Color.WHITE);
-        font.getData().setScale(1.5f); // Texto dos botões mais compacto
-        font.draw(batch, "REINICIAR", btnGO_Restart.x + 35, btnGO_Restart.y + 32);
-        font.draw(batch, "MENU PRINCIPAL", btnGO_Menu.x + 15, btnGO_Menu.y + 32);
-
-        // Restaurar escalas originais para não afetar o resto do jogo
-        font.getData().setScale(2f);
-        fontGrande.getData().setScale(3f);
-
-        batch.end();
-    }
-
-    private void drawLevelCompleteMenu() {
-        shapeRenderer.setProjectionMatrix(hudCamera.combined);
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        shapeRenderer.setColor(0, 0, 0, 0.85f);
-        shapeRenderer.rect(0, 0, VIEWPORT_WIDTH, WORLD_HEIGHT);
-
-        if (!showingScore) {
-            shapeRenderer.setColor(Color.GREEN);
-            shapeRenderer.rect(btnLC_Next.x, btnLC_Next.y, btnLC_Next.width, btnLC_Next.height);
-            shapeRenderer.setColor(Color.ORANGE);
-            shapeRenderer.rect(btnLC_Restart.x, btnLC_Restart.y, btnLC_Restart.width, btnLC_Restart.height);
-            shapeRenderer.setColor(Color.BLUE);
-            shapeRenderer.rect(btnLC_Score.x, btnLC_Score.y, btnLC_Score.width, btnLC_Score.height);
-            shapeRenderer.end();
-
-            batch.setProjectionMatrix(hudCamera.combined);
-            batch.begin();
-
-            // TAMANHO DIMINUÍDO
-            fontGrande.getData().setScale(2.2f);
-            fontGrande.setColor(Color.YELLOW);
-            fontGrande.draw(batch, "NÍVEL COMPLETO!", VIEWPORT_WIDTH / 2f - 110, 360);
-
-            font.setColor(Color.WHITE);
-            font.getData().setScale(1.5f);
-            String nextText = (level < 3) ? "PRÓXIMO NÍVEL" : "MENU PRINCIPAL";
-            font.draw(batch, nextText, btnLC_Next.x + 20, btnLC_Next.y + 32);
-            font.draw(batch, "REINICIAR", btnLC_Restart.x + 40, btnLC_Restart.y + 32);
-            font.draw(batch, "VER PONTUAÇÃO", btnLC_Score.x + 15, btnLC_Score.y + 32);
-
-            // Restaurar escalas
-            font.getData().setScale(2f);
-            fontGrande.getData().setScale(3f);
-
-            batch.end();
-        } else {
-            shapeRenderer.setColor(Color.GRAY);
-            shapeRenderer.rect(btnScore_Back.x, btnScore_Back.y, btnScore_Back.width, btnScore_Back.height);
-            shapeRenderer.end();
-
-            batch.setProjectionMatrix(hudCamera.combined);
-            batch.begin();
-
-            // TAMANHO DIMINUÍDO
-            fontGrande.getData().setScale(2.2f);
-            fontGrande.setColor(Color.YELLOW);
-            fontGrande.draw(batch, "PONTUAÇÃO", VIEWPORT_WIDTH / 2f - 80, 360);
-
-            font.setColor(Color.WHITE);
-            font.getData().setScale(1.8f); // Escala reduzida para caber melhor
-            font.draw(batch, "Vidas Restantes: " + lives, VIEWPORT_WIDTH / 2f - 110, 290);
-            font.draw(batch, "Moedas Apanhadas: " + coinsCollected, VIEWPORT_WIDTH / 2f - 130, 240);
-
-            font.getData().setScale(1.5f);
-            font.draw(batch, "VOLTAR", btnScore_Back.x + 50, btnScore_Back.y + 32);
-
-            // Restaurar escalas
-            font.getData().setScale(2f);
-            fontGrande.getData().setScale(3f);
-
-            batch.end();
+        for (Rectangle b : botoes) {
+            MenuStyle.drawButton(shapeRenderer, b, true);
         }
+        shapeRenderer.end();
+
+        batch.setProjectionMatrix(hudCamera.combined);
+        batch.begin();
+        MenuStyle.drawTitle(batch, menuFont, titulo, MenuStyle.TITLE_Y);
+        for (int i = 0; i < botoes.length; i++) {
+            MenuStyle.drawButtonLabel(batch, menuFont, textos[i], botoes[i], true);
+        }
+        batch.end();
+    }
+
+    private void drawScoreScreen() {
+        MenuStyle.clear();
+
+        shapeRenderer.setProjectionMatrix(hudCamera.combined);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        MenuStyle.drawButton(shapeRenderer, btnScore_Back, true);
+        shapeRenderer.end();
+
+        batch.setProjectionMatrix(hudCamera.combined);
+        batch.begin();
+        MenuStyle.drawTitle(batch, menuFont, "PONTUAÇÃO", MenuStyle.TITLE_Y);
+        MenuStyle.drawLine(batch, menuFont, "Vidas Restantes: " + lives, 300f);
+        MenuStyle.drawLine(batch, menuFont, "Moedas Apanhadas: " + coinsCollected, 255f);
+        MenuStyle.drawButtonLabel(batch, menuFont, "VOLTAR", btnScore_Back, true);
+        batch.end();
     }
 
     @Override public boolean touchDown(int screenX, int screenY, int pointer, int button) { return true; }
@@ -682,7 +647,7 @@ public class GameScreen implements Screen, InputProcessor {
         shapeRenderer.dispose();
         batch.dispose();
         font.dispose();
-        fontGrande.dispose();
+        menuFont.dispose();
         player.dispose();
         backgroundTexture.dispose();
         coinTexture.dispose();
