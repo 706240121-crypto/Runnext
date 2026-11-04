@@ -123,6 +123,13 @@ public class Player {
         }
     }
 
+    // NOVO: salto automático (ao pisar um inimigo ou ao levar dano). factor = força do salto (0 a 1)
+    public void bounce(float factor) {
+        velocityY = JUMP_SPEED * factor;
+        onGround = false;
+        stateTime = 0f;
+    }
+
     public void landOn(float groundY) {
         y = groundY - FOOT_OFFSET;
         velocityY = 0;

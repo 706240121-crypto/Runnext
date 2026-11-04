@@ -22,6 +22,7 @@ import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import com.sidney.runnext.Progress;
 import com.sidney.runnext.entities.Coin;
+import com.sidney.runnext.entities.Enemy;
 import com.sidney.runnext.entities.Player;
 
 public class GameScreen implements Screen, InputProcessor {
@@ -48,15 +49,28 @@ public class GameScreen implements Screen, InputProcessor {
 
     private final Player player;
 
-    private final Rectangle ground1;
-    private final Rectangle ground2;
-    private final Rectangle ground3;
-    private final Rectangle ground4;
+    private static final float GROUND_TOP = 45f; // altura do topo do chão
 
-    // Zonas de água (sem chão por baixo)
-    private final Rectangle water1;
-    private final Rectangle water2;
-    private final Rectangle water3;
+    // Layout das águas de cada nível: {x, largura, x, largura, ...}
+    // ATENÇÃO: a personagem salta no máximo ~200 px. Não ponha larguras acima de ~190.
+    private static final float[] WATER_LAYOUT_PADRAO = {800, 120, 2000, 160, 3300, 180};
+    private static final float[] WATER_LAYOUT_NIVEL_2 = {650, 150, 1100, 170, 1650, 160, 2250, 180, 2900, 170};
+
+    // Inimigos do nível 2: {x esquerdo da zona, x direito da zona, velocidade em px/s}
+    // Cada zona tem de ficar DENTRO de um bloco de chão (senão o inimigo anda por cima da água).
+    private static final float[][] ENEMIES_NIVEL_2 = {
+        {1340, 1560,  70},
+        {2530, 2820,  90},
+        {3300, 3750, 110}
+    };
+    // Todos os inimigos do nível 2 usam o mesmo sprite (se pôr mais nomes aqui, são usados por ordem)
+    private static final String[] ENEMY_SPRITES_NIVEL_2 = {
+        "enemies/snake.png"
+    };
+    private static final float INVULNERABLE_TIME = 1.5f; // segundos sem levar dano após ser atingida
+
+    private final Rectangle[] grounds;  // blocos de chão (o que sobra entre as águas)
+    private final Rectangle[] waters;   // zonas de água (sem chão por baixo)
 
     private final Rectangle finishPortal;
 
@@ -69,6 +83,10 @@ public class GameScreen implements Screen, InputProcessor {
     private final Array<Coin> coins = new Array<>();
     private int coinsCollected = 0;
     private float stateTime = 0f;
+
+    private final Array<Enemy> enemies = new Array<>();
+    private final Array<Texture> enemyTextures = new Array<>();
+    private float invulnTimer = 0f;
 
     private int lives = 3;
 
@@ -145,22 +163,37 @@ public class GameScreen implements Screen, InputProcessor {
         TextureRegion[][] coinFrames = TextureRegion.split(coinTexture, 16, 16);
         coinAnimation = new Animation<>(0.12f, coinFrames[0]);
 
-        // Água (antes: 180 / 250 / 300). Mude só estas larguras para ajustar.
-        water1 = new Rectangle(800, 0, 120, 35);
-        water2 = new Rectangle(2000, 0, 160, 35);
-        water3 = new Rectangle(3300, 0, 180, 35);
+        // Só o nível 2 tem um layout próprio (mais águas, mais juntas). Níveis 1 e 3 ficam como estavam.
+        float[] layout = (this.level == 2) ? WATER_LAYOUT_NIVEL_2 : WATER_LAYOUT_PADRAO;
+        int nAgua = layout.length / 2;
+        waters = new Rectangle[nAgua];
+        grounds = new Rectangle[nAgua + 1];
 
         // O chão é o que sobra entre as águas
-        ground1 = new Rectangle(0, 0, water1.x, 45);
-        ground2 = new Rectangle(water1.x + water1.width, 0, water2.x - (water1.x + water1.width), 45);
-        ground3 = new Rectangle(water2.x + water2.width, 0, water3.x - (water2.x + water2.width), 45);
-        ground4 = new Rectangle(water3.x + water3.width, 0, WORLD_WIDTH - (water3.x + water3.width), 45);
+        float inicioChao = 0f;
+        for (int i = 0; i < nAgua; i++) {
+            float wx = layout[i * 2];
+            float ww = layout[i * 2 + 1];
+            waters[i] = new Rectangle(wx, 0, ww, 35);
+            grounds[i] = new Rectangle(inicioChao, 0, wx - inicioChao, GROUND_TOP);
+            inicioChao = wx + ww;
+        }
+        grounds[nAgua] = new Rectangle(inicioChao, 0, WORLD_WIDTH - inicioChao, GROUND_TOP);
 
         finishPortal = new Rectangle(4050, 45, 60, 150);
 
-        player = new Player(100, ground1.y + ground1.height);
+        player = new Player(100, GROUND_TOP);
 
         createCoins();
+
+        if (this.level == 2) {
+            for (String path : ENEMY_SPRITES_NIVEL_2) {
+                Texture t = new Texture(Gdx.files.internal(path));
+                t.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+                enemyTextures.add(t);
+            }
+        }
+        createEnemies();
 
         btnLeft = new Rectangle(25, 15, 80, 80);
         btnRight = new Rectangle(115, 15, 80, 80);
@@ -194,7 +227,12 @@ public class GameScreen implements Screen, InputProcessor {
         coins.clear();
         coinsCollected = 0;
 
-        float groundTop = ground1.y + ground1.height;
+        if (level == 2) {
+            createCoinsNivel2();
+            return;
+        }
+
+        float groundTop = GROUND_TOP;
 
         for (int i = 0; i < 6; i++) {
             coins.add(new Coin(450 + (i * 50), groundTop + 30));
@@ -212,6 +250,40 @@ public class GameScreen implements Screen, InputProcessor {
         }
     }
 
+    private void createEnemies() {
+        enemies.clear();
+        invulnTimer = 0f;
+
+        if (level == 2) {
+            for (int i = 0; i < ENEMIES_NIVEL_2.length; i++) {
+                float[] cfg = ENEMIES_NIVEL_2[i];
+                TextureRegion sprite = new TextureRegion(enemyTextures.get(i % enemyTextures.size));
+                enemies.add(new Enemy(sprite, cfg[0], cfg[1], GROUND_TOP, cfg[2]));
+            }
+        }
+    }
+
+    // Moedas do nível 2: uma fila em cada bloco de chão + um arco por cima de cada água
+    private void createCoinsNivel2() {
+        for (int g = 0; g < grounds.length; g++) {
+            Rectangle gr = grounds[g];
+            float inicio = (g == 0) ? 400f : gr.x + 70f;
+            float fim = gr.x + gr.width - 70f;
+            int n = 0;
+            for (float cx = inicio; cx <= fim && n < 8; cx += 55f, n++) {
+                coins.add(new Coin(cx, GROUND_TOP + 30));
+            }
+        }
+
+        float[] arcY = {175f, 205f, 220f, 205f, 175f};
+        for (Rectangle w : waters) {
+            float centro = w.x + w.width / 2f;
+            for (int i = 0; i < arcY.length; i++) {
+                coins.add(new Coin(centro - 80f + i * 40f, arcY[i]));
+            }
+        }
+    }
+
     private Rectangle getPlayerBody() {
         Rectangle b = player.getBounds();
         return new Rectangle(b.x + 25, b.y + 12, b.width - 50, b.height - 25);
@@ -219,10 +291,10 @@ public class GameScreen implements Screen, InputProcessor {
 
     // true se o ponto x (centro dos pés) está sobre algum bloco de chão
     private boolean isOverGround(float x) {
-        return (x >= ground1.x && x <= ground1.x + ground1.width)
-            || (x >= ground2.x && x <= ground2.x + ground2.width)
-            || (x >= ground3.x && x <= ground3.x + ground3.width)
-            || (x >= ground4.x && x <= ground4.x + ground4.width);
+        for (Rectangle g : grounds) {
+            if (x >= g.x && x <= g.x + g.width) return true;
+        }
+        return false;
     }
 
     // Converte um toque no ecrã para as coordenadas do HUD/menus (800x480),
@@ -266,7 +338,7 @@ public class GameScreen implements Screen, InputProcessor {
             // Aterragem pelo centro dos pés, só se vinha de cima do chão
             Rectangle body = getPlayerBody();
             float feetX = body.x + body.width / 2f;
-            float groundLevel = ground1.y + ground1.height;
+            float groundLevel = GROUND_TOP;
 
             if (player.getVelocityY() <= 0 && prevFootY >= groundLevel - 1f && player.getFootY() <= groundLevel) {
                 if (isOverGround(feetX)) {
@@ -291,6 +363,26 @@ public class GameScreen implements Screen, InputProcessor {
                     coin.collect();
                     coinsCollected++;
                     Gdx.app.log("GameScreen", "Moeda apanhada! Total: " + coinsCollected);
+                }
+            }
+
+            // Inimigos: pisar por cima derrota-os; tocar de lado tira uma vida
+            if (invulnTimer > 0f) invulnTimer -= delta;
+
+            for (Enemy enemy : enemies) {
+                if (isGameOver) break;
+                if (!enemy.isAlive()) continue;
+                enemy.update(delta);
+
+                Rectangle eb = enemy.getBounds();
+                if (playerBody.overlaps(eb)) {
+                    boolean pisou = player.getVelocityY() < 0 && prevFootY >= eb.y + eb.height - 15f;
+                    if (pisou) {
+                        enemy.kill();
+                        player.bounce(0.7f);
+                    } else if (invulnTimer <= 0f) {
+                        tomarDanoDeInimigo();
+                    }
                 }
             }
         } else if (!isLevelComplete && !isGameOver) {
@@ -343,14 +435,12 @@ public class GameScreen implements Screen, InputProcessor {
         shapeRenderer.setProjectionMatrix(camera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
 
-        desenharBlocoChao(ground1.x, ground1.width);
-        desenharBlocoChao(ground2.x, ground2.width);
-        desenharBlocoChao(ground3.x, ground3.width);
-        desenharBlocoChao(ground4.x, ground4.width);
-
-        desenharAgua(water1);
-        desenharAgua(water2);
-        desenharAgua(water3);
+        for (Rectangle g : grounds) {
+            desenharBlocoChao(g.x, g.width);
+        }
+        for (Rectangle w : waters) {
+            desenharAgua(w);
+        }
 
         float pulse = (float) Math.sin(stateTime * 6f) * 4f;
         float rx = finishPortal.x;
@@ -372,8 +462,25 @@ public class GameScreen implements Screen, InputProcessor {
         shapeRenderer.end();
 
         batch.begin();
-        player.render(batch);
+        for (Enemy e : enemies) {
+            e.render(batch);
+        }
+        // pisca enquanto está invulnerável depois de levar dano
+        boolean piscar = invulnTimer > 0f && ((int) (invulnTimer * 10f) % 2 == 0);
+        if (!piscar) player.render(batch);
         batch.end();
+    }
+
+    private void tomarDanoDeInimigo() {
+        lives--;
+        Gdx.app.log("GameScreen", "Tocou num inimigo! Vidas restantes: " + lives);
+        invulnTimer = INVULNERABLE_TIME;
+        player.bounce(0.5f); // pequeno salto de susto
+
+        if (lives <= 0) {
+            isGameOver = true;
+            isPaused = true;
+        }
     }
 
     private void irParaProximoNivelOuMenu() {
@@ -396,14 +503,12 @@ public class GameScreen implements Screen, InputProcessor {
         } else {
             // Respawn baseado no centro do corpo e nas posições da água
             float cx = getPlayerBody().x + getPlayerBody().width / 2f;
-            if (cx > water3.x - 100f) {
-                player.setX(water3.x - 100f);   // 3200
-            } else if (cx > water2.x - 100f) {
-                player.setX(water2.x - 100f);   // 1900
-            } else {
-                player.setX(100f);
+            int idx = 0;
+            for (int i = 0; i < waters.length; i++) {
+                if (cx > waters[i].x - 100f) idx = i;
             }
-            player.setY(ground1.y + ground1.height);
+            player.setX(idx == 0 ? 100f : waters[idx].x - 100f);
+            player.setY(GROUND_TOP);
         }
     }
 
@@ -434,12 +539,13 @@ public class GameScreen implements Screen, InputProcessor {
         lives = 3;
         coinsCollected = 0;
         player.setX(100f);
-        player.setY(ground1.y + ground1.height);
+        player.setY(GROUND_TOP);
         isLevelComplete = false;
         showingScore = false;
         isGameOver = false;
         isPaused = false;
         createCoins();
+        createEnemies();
     }
 
     // Toques nos botões dos menus (só um toque novo por vez, não repete enquanto o dedo está pousado)
@@ -651,5 +757,8 @@ public class GameScreen implements Screen, InputProcessor {
         player.dispose();
         backgroundTexture.dispose();
         coinTexture.dispose();
+        for (Texture t : enemyTextures) {
+            t.dispose();
+        }
     }
 }
