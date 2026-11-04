@@ -39,6 +39,14 @@ public class Player {
 
     private float stateTime = 0f;
 
+    // Tolerância: ainda pode saltar este tempo (s) depois de sair da borda
+    private static final float COYOTE_TIME = 0.1f;
+    private float coyoteTimer = 0f;
+
+    // ✅ NOVO: Variáveis para controlar o Salto Duplo
+    private int jumpCount = 0;
+    private static final int MAX_JUMPS = 2;
+
     public Player(float startX, float startY) {
         this.x = startX;
         this.y = startY;
@@ -78,6 +86,7 @@ public class Player {
         applyPhysics(delta);
         updateState();
         stateTime += delta;
+        if (coyoteTimer > 0f) coyoteTimer -= delta;
     }
 
     private void handleInput() {
@@ -92,11 +101,18 @@ public class Player {
         }
     }
 
+    // ✅ MODIFICADO: Lógica do Salto Duplo
     public void jump() {
-        if (onGround) {
+        if (onGround || coyoteTimer > 0f) {
             velocityY = JUMP_SPEED;
             onGround = false;
-            stateTime = 0f; // Reinicia o tempo para começar a animação do salto do início
+            coyoteTimer = 0f;
+            jumpCount = 1; // Regista o primeiro salto
+            stateTime = 0f; // Reinicia a animação
+        } else if (jumpCount < MAX_JUMPS) {
+            velocityY = JUMP_SPEED; // Aplica o segundo impulso
+            jumpCount++; // Regista o segundo salto
+            stateTime = 0f; // Reinicia a animação para dar feedback visual do duplo salto
         }
     }
 
@@ -127,13 +143,23 @@ public class Player {
     public void bounce(float factor) {
         velocityY = JUMP_SPEED * factor;
         onGround = false;
+        coyoteTimer = 0f;
+        jumpCount = 0; // Reseta a contagem para permitir saltos normais após quicar no inimigo
         stateTime = 0f;
     }
 
+    // ✅ MODIFICADO: Reseta a contagem de saltos ao tocar no chão
     public void landOn(float groundY) {
         y = groundY - FOOT_OFFSET;
         velocityY = 0;
         onGround = true;
+        coyoteTimer = COYOTE_TIME;
+        jumpCount = 0; // Permite novos 2 saltos
+    }
+
+    // NOVO: chamado pelo GameScreen quando já não há nada por baixo dos pés (ex: saiu da borda)
+    public void leaveGround() {
+        onGround = false;
     }
 
     public void render(SpriteBatch batch) {
@@ -185,6 +211,11 @@ public class Player {
     }
 
     public float getVelocityY() { return velocityY; }
+
+    public void setVelocityY(float velocityY) {
+        this.velocityY = velocityY;
+    }
+
     public State getState() { return state; }
     public float getX() { return x; }
     public void setX(float x) { this.x = x; }

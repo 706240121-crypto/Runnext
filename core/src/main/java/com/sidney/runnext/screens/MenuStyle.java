@@ -24,10 +24,14 @@ public final class MenuStyle {
     public static final float TITLE_SCALE = 4f;
     public static final float TEXT_SCALE = 2.2f;
 
-    public static final float BUTTON_W = 300f;
+    public static final float BUTTON_W = 360f;
     public static final float BUTTON_H = 50f;
     public static final float BUTTON_STEP = 70f;     // distância entre botões
     public static final float TITLE_Y = 370f;
+    public static final float INGAME_TITLE_Y = 410f;  // título dos menus de dentro do jogo
+    public static final float HEADER_Y = 458f;        // nome do jogo, no topo desses menus
+
+    public static final Color GOLD = new Color(1f, 0.84f, 0f, 1f);
     public static final float FIRST_BUTTON_Y = 250f;
 
     private static final Color BACKGROUND = new Color(0.1f, 0.1f, 0.15f, 1f);
@@ -44,6 +48,13 @@ public final class MenuStyle {
     public static Rectangle button(int index) {
         return new Rectangle(CENTER_X - BUTTON_W / 2f,
             FIRST_BUTTON_Y - index * BUTTON_STEP,
+            BUTTON_W, BUTTON_H);
+    }
+
+    /** Botão número 'index' numa coluna centrada em centerX, com o topo do primeiro em topY. */
+    public static Rectangle buttonAt(float centerX, float topY, int index) {
+        return new Rectangle(centerX - BUTTON_W / 2f,
+            topY - BUTTON_H - index * BUTTON_STEP,
             BUTTON_W, BUTTON_H);
     }
 
@@ -78,6 +89,23 @@ public final class MenuStyle {
     /** Linha de texto normal centrada (ex: pontuação). */
     public static void drawLine(SpriteBatch batch, BitmapFont font, String text, float y) {
         drawCentered(batch, font, text, TEXT_SCALE, TEXT_ON, y);
+    }
+
+    /** Nome do jogo, pequeno, no topo dos menus de dentro do jogo. */
+    public static void drawHeader(SpriteBatch batch, BitmapFont font) {
+        drawCentered(batch, font, "RUNNEXT", TEXT_SCALE, GOLD, HEADER_Y);
+    }
+
+    /** Linha de texto centrada, com cor à escolha. */
+    public static void drawLine(SpriteBatch batch, BitmapFont font, String text, float y, Color color) {
+        drawCentered(batch, font, text, TEXT_SCALE, color, y);
+    }
+
+    /** Linha de texto alinhada à esquerda (usada nos resultados). */
+    public static void drawLeft(SpriteBatch batch, BitmapFont font, String text, float x, float y, Color color) {
+        font.getData().setScale(TEXT_SCALE);
+        font.setColor(color);
+        font.draw(batch, text, x, y);
     }
 
     /** Texto centrado dentro de um botão. */

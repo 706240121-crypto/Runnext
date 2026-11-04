@@ -43,6 +43,26 @@ public final class Progress {
         }
     }
 
+    private static String bestKey(int level) {
+        return "bestScoreLevel" + level;
+    }
+
+    /** Melhor pontuação guardada para esse nível (0 se ainda não houver). */
+    public static int getBestScore(int level) {
+        return prefs().getInteger(bestKey(level), 0);
+    }
+
+    /** Guarda a pontuação se for a melhor desse nível. Devolve true se for um novo recorde. */
+    public static boolean submitScore(int level, int score) {
+        if (score > getBestScore(level)) {
+            Preferences p = prefs();
+            p.putInteger(bestKey(level), score);
+            p.flush();
+            return true;
+        }
+        return false;
+    }
+
     /** Volta a bloquear tudo menos o nível 1 (útil para testes). */
     public static void reset() {
         Preferences p = prefs();
