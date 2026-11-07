@@ -7,8 +7,9 @@ import com.badlogic.gdx.math.Rectangle;
 /**
  * Enemy.java
  *
- * Inimigo que patrulha para a esquerda e para a direita dentro de uma zona
- * (areaLeft..areaRight), virando quando chega a cada extremo.
+ * TIPO 1 - Inimigo que anda sem parar para a esquerda e para a direita dentro
+ * de uma zona (areaLeft..areaRight), virando quando chega a cada extremo.
+ * (O TIPO 2, PatrolEnemy, herda desta classe e muda o comportamento.)
  * É desenhado com um sprite (TextureRegion) que lhe é dado, com um pequeno
  * balanço e saltinhos para parecer que anda.
  * A textura é criada e destruída pelo GameScreen (o inimigo só a usa).
@@ -18,16 +19,17 @@ public class Enemy {
     public static final float WIDTH = 64f;
     public static final float HEIGHT = 64f;
 
-    private final TextureRegion region;
-    private final float minX;   // limite esquerdo (x do lado esquerdo do corpo)
-    private final float maxX;   // limite direito  (x do lado esquerdo do corpo)
-    private final float y;
-    private final float speed;
+    // "protected": a subclasse (PatrolEnemy) usa estes campos
+    protected final TextureRegion region;
+    protected final float minX;   // limite esquerdo (x do lado esquerdo do corpo)
+    protected final float maxX;   // limite direito  (x do lado esquerdo do corpo)
+    protected final float y;
+    protected final float speed;
 
-    private float x;
-    private boolean movingRight = true;
-    private boolean alive = true;
-    private float stateTime = 0f;
+    protected float x;
+    protected boolean movingRight = true;
+    protected boolean alive = true;
+    protected float stateTime = 0f;
 
     /**
      * @param region     imagem do inimigo

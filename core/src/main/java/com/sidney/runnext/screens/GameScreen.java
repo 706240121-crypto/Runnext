@@ -26,6 +26,7 @@ import com.sidney.runnext.Progress;
 import com.sidney.runnext.entities.Boss;
 import com.sidney.runnext.entities.Coin;
 import com.sidney.runnext.entities.Enemy;
+import com.sidney.runnext.entities.PatrolEnemy;
 import com.sidney.runnext.entities.Player;
 import com.sidney.runnext.entities.Spike;
 
@@ -68,23 +69,42 @@ public class GameScreen implements Screen, InputProcessor {
     // Nível 3 (castelo): 3 águas e depois um chão comprido (obstáculos e a arena do Boss)
     private static final float[] WATER_LAYOUT_NIVEL_3 = {650, 150, 1300, 170, 2000, 180};
 
-    // Inimigos do nível 2: {x esquerdo da zona, x direito da zona, velocidade em px/s}
+    // Inimigos: {x esquerdo da zona, x direito da zona, velocidade em px/s, tipo}
+    //   tipo 0 = cobra: anda sem parar de um lado para o outro (Enemy)
+    //   tipo 1 = macaco: patrulha entre dois pontos e pára em cada ponta (PatrolEnemy)
     // Cada zona tem de ficar DENTRO de um bloco de chão (senão o inimigo anda por cima da água).
-    private static final float[][] ENEMIES_NIVEL_2 = {
-        {1340, 1560,  70},
-        {2530, 2820,  90},
-        {3300, 3750, 110}
+    private static final float[][] ENEMIES_NIVEL_1 = {
+        {1250, 1550, 60, 1},
+        {2500, 2800, 70, 1},
+        {3770, 3980, 80, 1}
     };
-    // Todos os inimigos do nível 2 usam o mesmo sprite (se pôr mais nomes aqui, são usados por ordem)
-    private static final String[] ENEMY_SPRITES_NIVEL_2 = {
-        "enemies/snake.png"
+    private static final float[][] ENEMIES_NIVEL_2 = {
+        {1340, 1560,  70, 0},
+        {2530, 2820,  90, 0},
+        {3300, 3750, 110, 0}
+    };
+    // O sprite de cada tipo (o número do tipo é a posição nesta lista)
+    private static final String[] ENEMY_SPRITES = {
+        "enemies/snake.png", "enemies/monkey.png"
+    };
+    private static final float PATROL_PAUSE = 1.0f; // segundos que o macaco pára em cada ponta
+
+    // Nível 1 (floresta): poucos espinhos e plataformas de bónus, para ser o mais fácil
+    private static final float[][] SPIKES_NIVEL_1 = {
+        {1050, 60},
+        {1800, 60},
+        {2950, 60}
+    };
+    private static final float[][] PLATFORMS_NIVEL_1 = {
+        {2250, 180},
+        {3560, 180}
     };
     // Inimigos do nível 3 (mesmo formato): mais rápidos que os do nível 2
     private static final float[][] ENEMIES_NIVEL_3 = {
-        {1050, 1260,  90},
-        {1520, 1690, 100},
-        {2520, 2780, 110},
-        {2950, 3250, 120}
+        {1050, 1260,  90, 0},
+        {1520, 1690, 100, 1},
+        {2520, 2780, 110, 0},
+        {2950, 3250, 120, 1}
     };
 
     // Espinhos do nível 3: {x esquerdo, largura}. Tocar com os pés tira uma vida.
@@ -149,11 +169,12 @@ public class GameScreen implements Screen, InputProcessor {
     private final Rectangle btnLeft;
     private final Rectangle btnRight;
     private final Vector2 btnJumpCenter;
-    private final float btnJumpRadius = 45f;
+    private final float btnJumpRadius = 50f;
 
     private boolean touchLeft = false;
     private boolean touchRight = false;
     private boolean touchJump = false;
+    private boolean jumpWasDown = false;   // para detectar o instante em que o botão é carregado
 
     private final Rectangle btnPause;
     private boolean isPaused = false;
@@ -274,12 +295,10 @@ public class GameScreen implements Screen, InputProcessor {
         createSpikes();
         createCoins();
 
-        if (this.level == 2 || this.level == 3) {
-            for (String path : ENEMY_SPRITES_NIVEL_2) {
-                Texture t = new Texture(Gdx.files.internal(path));
-                t.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
-                enemyTextures.add(t);
-            }
+        for (String path : ENEMY_SPRITES) {
+            Texture t = new Texture(Gdx.files.internal(path));
+            t.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+            enemyTextures.add(t);
         }
         if (this.level == 3) {
             bossTexture = new Texture(Gdx.files.internal("enemies/boss.png"));
@@ -288,9 +307,9 @@ public class GameScreen implements Screen, InputProcessor {
         createEnemies();
         createBoss();
 
-        btnLeft = new Rectangle(25, 15, 80, 80);
-        btnRight = new Rectangle(115, 15, 80, 80);
-        btnJumpCenter = new Vector2(VIEWPORT_WIDTH - 85, 55);
+        btnLeft = new Rectangle(30f, 45f, 95f, 95f);
+        btnRight = new Rectangle(145f, 45f, 95f, 95f);
+        btnJumpCenter = new Vector2(VIEWPORT_WIDTH - 100f, 80f);
 
         btnPause = new Rectangle(375, WORLD_HEIGHT - 60, 50, 40);
 
@@ -345,22 +364,24 @@ public class GameScreen implements Screen, InputProcessor {
         for (int i = 0; i < 5; i++) {
             coins.add(new Coin(3800 + (i * 35), groundTop + arcY[i % arcY.length]));
         }
+
+        createCoinsDasPlataformas();
     }
 
     private void createPlatforms() {
         platforms.clear();
-        float[][] cfgs = (level == 2) ? PLATFORMS_NIVEL_2 : (level == 3) ? PLATFORMS_NIVEL_3 : null;
-        if (cfgs != null) {
-            for (float[] cfg : cfgs) {
-                platforms.add(new Rectangle(cfg[0], PLATFORM_TOP - PLATFORM_THICKNESS, cfg[1], PLATFORM_THICKNESS));
-            }
+        float[][] cfgs = (level == 1) ? PLATFORMS_NIVEL_1 : (level == 2) ? PLATFORMS_NIVEL_2 : PLATFORMS_NIVEL_3;
+        for (float[] cfg : cfgs) {
+            platforms.add(new Rectangle(cfg[0], PLATFORM_TOP - PLATFORM_THICKNESS, cfg[1], PLATFORM_THICKNESS));
         }
     }
 
     private void createSpikes() {
         spikes.clear();
-        if (level == 3) {
-            for (float[] cfg : SPIKES_NIVEL_3) {
+        // o nível 2 não tem espinhos (a dificuldade dele vem das águas e das plataformas)
+        float[][] cfgs = (level == 1) ? SPIKES_NIVEL_1 : (level == 3) ? SPIKES_NIVEL_3 : null;
+        if (cfgs != null) {
+            for (float[] cfg : cfgs) {
                 spikes.add(new Spike(cfg[0], GROUND_TOP, cfg[1]));
             }
         }
@@ -383,11 +404,13 @@ public class GameScreen implements Screen, InputProcessor {
         enemies.clear();
         invulnTimer = 0f;
 
-        float[][] cfgs = (level == 2) ? ENEMIES_NIVEL_2 : (level == 3) ? ENEMIES_NIVEL_3 : null;
-        if (cfgs != null) {
-            for (int i = 0; i < cfgs.length; i++) {
-                float[] cfg = cfgs[i];
-                TextureRegion sprite = new TextureRegion(enemyTextures.get(i % enemyTextures.size));
+        float[][] cfgs = (level == 1) ? ENEMIES_NIVEL_1 : (level == 2) ? ENEMIES_NIVEL_2 : ENEMIES_NIVEL_3;
+        for (float[] cfg : cfgs) {
+            int tipo = (int) cfg[3];
+            TextureRegion sprite = new TextureRegion(enemyTextures.get(tipo));
+            if (tipo == 1) {
+                enemies.add(new PatrolEnemy(sprite, cfg[0], cfg[1], GROUND_TOP, cfg[2], PATROL_PAUSE));
+            } else {
                 enemies.add(new Enemy(sprite, cfg[0], cfg[1], GROUND_TOP, cfg[2]));
             }
         }
@@ -414,7 +437,11 @@ public class GameScreen implements Screen, InputProcessor {
             }
         }
 
-        // Moedas em cima de cada plataforma (recompensa por lá chegar)
+        createCoinsDasPlataformas();
+    }
+
+    // Moedas em cima de cada plataforma (recompensa por lá chegar)
+    private void createCoinsDasPlataformas() {
         for (Rectangle p : platforms) {
             int n = 0;
             for (float cx = p.x + 40f; cx <= p.x + p.width - 40f && n < 6; cx += 55f, n++) {
@@ -469,7 +496,15 @@ public class GameScreen implements Screen, InputProcessor {
         }
 
         // Só atualiza a física se NÃO estiver pausado, NÃO tiver completado o nível e NÃO for Game Over
-        if (!isPaused && !isLevelComplete && !isGameOver) {
+        // Animação de morte: a personagem continua a ser actualizada até acabar; só depois aparece o Game Over
+        if (player.getState() == Player.State.DEAD) {
+            player.update(delta);
+            stateTime += delta;
+            if (player.isDeathAnimationFinished()) {
+                isGameOver = true;
+                isPaused = true;
+            }
+        } else if (!isPaused && !isLevelComplete && !isGameOver) {
             float prevFootY = player.getFootY(); // posição dos pés antes do update
             player.update(delta);
             stateTime += delta;
@@ -614,7 +649,10 @@ public class GameScreen implements Screen, InputProcessor {
         }
 
         // Menus: ocupam o ecrã todo, com o mesmo visual do menu inicial
-        if (isGameOver) {
+        if (player.getState() == Player.State.DEAD && !player.isDeathAnimationFinished()) {
+            drawWorld();   // enquanto morre, continua a ver-se o jogo
+            drawUI();
+        } else if (isGameOver) {
             drawGameOver();
         } else if (isLevelComplete) {
             if (showingVictory) {
@@ -700,7 +738,8 @@ public class GameScreen implements Screen, InputProcessor {
         }
         if (boss != null) boss.render(batch);
         // pisca enquanto está invulnerável depois de levar dano
-        boolean piscar = invulnTimer > 0f && ((int) (invulnTimer * 10f) % 2 == 0);
+        // pisca enquanto está invulnerável (durante o dano a própria personagem fica vermelha)
+        boolean piscar = invulnTimer > 0f && !player.isHurt() && ((int) (invulnTimer * 10f) % 2 == 0);
         if (!piscar) player.render(batch);
         batch.end();
     }
@@ -722,8 +761,10 @@ public class GameScreen implements Screen, InputProcessor {
         tocarSomDeDano();
         Gdx.app.log("GameScreen", "Bateu na plataforma! Vidas restantes: " + lives);
         invulnTimer = INVULNERABLE_TIME;
+        player.setHurt();
 
         if (lives <= 0) {
+            player.setDead();
             isGameOver = true;
             isPaused = true;
         }
@@ -734,9 +775,11 @@ public class GameScreen implements Screen, InputProcessor {
         tocarSomDeDano();
         Gdx.app.log("GameScreen", "Levou dano! Vidas restantes: " + lives);
         invulnTimer = INVULNERABLE_TIME;
+        player.setHurt();
         player.bounce(0.5f); // pequeno salto de susto
 
         if (lives <= 0) {
+            player.setDead();
             isGameOver = true;
             isPaused = true;
         }
@@ -761,6 +804,7 @@ public class GameScreen implements Screen, InputProcessor {
         Gdx.app.log("GameScreen", "Caiu na água! Vidas restantes: " + lives);
 
         if (lives <= 0) {
+            player.setDead();
             Gdx.app.log("GameScreen", "Game Over! Exibindo tela de GAME OVER...");
             isGameOver = true;
             isPaused = true; // Pausa o jogo para mostrar o menu
@@ -819,6 +863,7 @@ public class GameScreen implements Screen, InputProcessor {
         resultsSaved = false;
         newRecord = false;
         showingVictory = false;
+        player.reset();
         player.setX(100f);
         player.setY(GROUND_TOP);
         isLevelComplete = false;
@@ -833,6 +878,8 @@ public class GameScreen implements Screen, InputProcessor {
     private void handleMenuTouch() {
         boolean menuAtivo = isGameOver || isLevelComplete || isPaused;
         if (!menuAtivo || !Gdx.input.justTouched()) return;
+        // durante a animação de morte ainda não há menu (os toques não podem acertar em botões invisíveis)
+        if (player.getState() == Player.State.DEAD && !player.isDeathAnimationFinished()) return;
 
         Vector3 t = toHud(Gdx.input.getX(), Gdx.input.getY());
 
@@ -908,12 +955,13 @@ public class GameScreen implements Screen, InputProcessor {
             player.setMovingRight(false);
         }
 
-        if (touchJump || Gdx.input.isKeyPressed(Input.Keys.SPACE) || Gdx.input.isKeyPressed(Input.Keys.UP) || Gdx.input.isKeyPressed(Input.Keys.W)) {
-            float vyAntes = player.getVelocityY();
-            player.jump();
-            if (vyAntes <= 0f && player.getVelocityY() > 0f) {
-                jumpSound.play();
-            }
+        boolean jumpDown = touchJump || Gdx.input.isKeyPressed(Input.Keys.SPACE)
+            || Gdx.input.isKeyPressed(Input.Keys.UP) || Gdx.input.isKeyPressed(Input.Keys.W);
+        boolean jumpPressed = jumpDown && !jumpWasDown;   // true só no instante em que carrega
+        jumpWasDown = jumpDown;
+
+        if (jumpDown && player.jump(jumpPressed)) {
+            jumpSound.play();
         }
     }
 
@@ -926,14 +974,16 @@ public class GameScreen implements Screen, InputProcessor {
 
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
 
-        shapeRenderer.setColor(0.3f, 0.3f, 0.35f, 0.7f);
+        if (touchLeft) shapeRenderer.setColor(0.5f, 0.5f, 0.6f, 0.9f); else shapeRenderer.setColor(0.3f, 0.3f, 0.35f, 0.7f);
         shapeRenderer.rect(btnLeft.x, btnLeft.y, btnLeft.width, btnLeft.height);
+
+        if (touchRight) shapeRenderer.setColor(0.5f, 0.5f, 0.6f, 0.9f); else shapeRenderer.setColor(0.3f, 0.3f, 0.35f, 0.7f);
         shapeRenderer.rect(btnRight.x, btnRight.y, btnRight.width, btnRight.height);
 
         shapeRenderer.setColor(0.2f, 0.2f, 0.25f, 0.8f);
         shapeRenderer.rect(btnPause.x, btnPause.y, btnPause.width, btnPause.height);
 
-        shapeRenderer.setColor(0.85f, 0.65f, 0.35f, 0.9f);
+        if (touchJump) shapeRenderer.setColor(0.95f, 0.75f, 0.45f, 1f); else shapeRenderer.setColor(0.85f, 0.65f, 0.35f, 0.9f);
         shapeRenderer.circle(btnJumpCenter.x, btnJumpCenter.y, btnJumpRadius);
         shapeRenderer.setColor(0.95f, 0.82f, 0.55f, 0.95f);
         shapeRenderer.circle(btnJumpCenter.x, btnJumpCenter.y, btnJumpRadius - 7f);
@@ -968,8 +1018,8 @@ public class GameScreen implements Screen, InputProcessor {
 
         batch.begin();
         font.setColor(Color.WHITE);
-        font.draw(batch, "<", btnLeft.x + 30, btnLeft.y + 52);
-        font.draw(batch, ">", btnRight.x + 30, btnRight.y + 52);
+        font.draw(batch, "<", btnLeft.x + 35, btnLeft.y + 60);
+        font.draw(batch, ">", btnRight.x + 35, btnRight.y + 60);
         font.draw(batch, "||", btnPause.x + 14, btnPause.y + 28);
 
         font.getData().setScale(1.2f);
