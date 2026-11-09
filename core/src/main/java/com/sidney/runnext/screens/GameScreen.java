@@ -6,9 +6,11 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputProcessor;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.audio.Sound;
+import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Animation;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
@@ -22,7 +24,9 @@ import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
+import com.sidney.runnext.Audio;
 import com.sidney.runnext.Progress;
+import com.sidney.runnext.Settings;
 import com.sidney.runnext.entities.Boss;
 import com.sidney.runnext.entities.Coin;
 import com.sidney.runnext.entities.Enemy;
@@ -57,6 +61,9 @@ public class GameScreen implements Screen, InputProcessor {
     private final Sound coinSound;
     private final Sound hurtSound;
     private final Sound deathSound;
+    private final Sound enemyDefeatedSound;   // inimigo derrotado
+    private final Sound bossHitSound;         // golpe no Boss
+    private final Sound levelCompleteSound;   // nível completo
 
     private final Player player;
 
@@ -255,10 +262,13 @@ public class GameScreen implements Screen, InputProcessor {
 
         menuFont = new BitmapFont();
 
-        jumpSound = Gdx.audio.newSound(Gdx.files.internal("audio/sfx/jump.wav"));
-        coinSound = Gdx.audio.newSound(Gdx.files.internal("audio/sfx/coin.wav"));
-        hurtSound = Gdx.audio.newSound(Gdx.files.internal("audio/sfx/hurt.wav"));
-        deathSound = Gdx.audio.newSound(Gdx.files.internal("audio/sfx/death.wav"));
+        jumpSound = loadSound("audio/sfx/jump.wav");
+        coinSound = loadSound("audio/sfx/coin.wav");
+        hurtSound = loadSound("audio/sfx/hurt.wav");
+        deathSound = loadSound("audio/sfx/death.wav");
+        enemyDefeatedSound = loadSound("audio/sfx/enemy_defeated.wav");
+        bossHitSound = loadSound("audio/sfx/boss_hit.wav");
+        levelCompleteSound = loadSound("audio/sfx/level_complete.wav");
 
         backgroundTexture = new Texture(Gdx.files.internal(BACKGROUND_FILES[this.level - 1]));
         backgroundTexture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
@@ -296,13 +306,10 @@ public class GameScreen implements Screen, InputProcessor {
         createCoins();
 
         for (String path : ENEMY_SPRITES) {
-            Texture t = new Texture(Gdx.files.internal(path));
-            t.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
-            enemyTextures.add(t);
+            enemyTextures.add(loadTextureOrPlaceholder(path, Color.RED));
         }
         if (this.level == 3) {
-            bossTexture = new Texture(Gdx.files.internal("enemies/boss.png"));
-            bossTexture.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+            bossTexture = loadTextureOrPlaceholder("enemies/boss.png", Color.PURPLE);
         }
         createEnemies();
         createBoss();
@@ -450,6 +457,24 @@ public class GameScreen implements Screen, InputProcessor {
         }
     }
 
+    // Carrega uma imagem. Se o ficheiro não existir, o jogo NÃO fecha: usa um quadrado da cor dada
+    // no lugar da imagem e avisa no Logcat ("IMAGEM EM FALTA"), para se perceber o que falta copiar.
+    private Texture loadTextureOrPlaceholder(String path, Color fallbackColor) {
+        FileHandle file = Gdx.files.internal(path);
+        if (file.exists()) {
+            Texture t = new Texture(file);
+            t.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+            return t;
+        }
+        Gdx.app.error("GameScreen", "IMAGEM EM FALTA: " + path + " (a usar um quadrado no lugar)");
+        Pixmap pixmap = new Pixmap(64, 64, Pixmap.Format.RGBA8888);
+        pixmap.setColor(fallbackColor);
+        pixmap.fill();
+        Texture t = new Texture(pixmap);
+        pixmap.dispose();
+        return t;
+    }
+
     // Caixa mais estreita que o corpo: torna mais justas as colisões com o Boss
     private Rectangle getPlayerHurtBox() {
         Rectangle b = getPlayerBody();
@@ -478,10 +503,30 @@ public class GameScreen implements Screen, InputProcessor {
         return v;
     }
 
+    // Carrega um efeito sonoro; se o ficheiro não existir devolve null (o jogo não fecha)
+    private Sound loadSound(String path) {
+        if (!Gdx.files.internal(path).exists()) {
+            Gdx.app.error("GameScreen", "SOM EM FALTA: " + path);
+            return null;
+        }
+        return Gdx.audio.newSound(Gdx.files.internal(path));
+    }
+
+    // Toca um efeito, respeitando a opção "Sons" do menu OPÇÕES
+    private void tocarSom(Sound sound) {
+        if (sound != null && Settings.isSfxOn()) sound.play();
+    }
+
+    // Música de cada nível: audio/music/level1.ogg, level2.ogg, level3.ogg
+    private String levelMusicPath() {
+        return "audio/music/level" + level + ".ogg";
+    }
+
     @Override
     public void show() {
         Gdx.app.log("GameScreen", "=== TELA INICIADA (nível " + level + ") ===");
         Gdx.input.setInputProcessor(this);
+        Audio.playMusic(levelMusicPath(), true);
     }
 
     @Override
@@ -567,13 +612,15 @@ public class GameScreen implements Screen, InputProcessor {
                 isLevelComplete = true;
                 isPaused = true;
                 Progress.unlock(level + 1); // desbloqueia o próximo nível (fica guardado)
+                Audio.stopMusic();
+                tocarSom(levelCompleteSound);
             }
 
             for (Coin coin : coins) {
                 if (!coin.isCollected() && playerBody.overlaps(coin.getBounds())) {
                     coin.collect();
                     coinsCollected++;
-                    coinSound.play();
+                    tocarSom(coinSound);
                     levelScore += POINTS_COIN;
                     Gdx.app.log("GameScreen", "Moeda apanhada! Total: " + coinsCollected);
                 }
@@ -592,6 +639,7 @@ public class GameScreen implements Screen, InputProcessor {
                     boolean pisou = player.getVelocityY() < 0 && prevFootY >= eb.y + eb.height - 15f;
                     if (pisou) {
                         enemy.kill();
+                        tocarSom(enemyDefeatedSound);
                         enemiesDefeated++;
                         levelScore += POINTS_ENEMY;
                         player.bounce(0.7f);
@@ -617,6 +665,7 @@ public class GameScreen implements Screen, InputProcessor {
                 float centroX = playerBody.x + playerBody.width / 2f;
                 if (!boss.isActive() && centroX >= ARENA_TRIGGER_X) {
                     boss.activate();
+                    Audio.playMusic("audio/music/boss.ogg", true);   // começa a música do Boss
                 }
                 boss.update(delta, centroX);
 
@@ -624,7 +673,7 @@ public class GameScreen implements Screen, InputProcessor {
                     Rectangle bb = boss.getBounds();
                     boolean pisou = player.getVelocityY() < 0 && prevFootY >= bb.y + bb.height - 20f;
                     if (pisou) {
-                        boss.takeHit();
+                        if (boss.takeHit()) tocarSom(bossHitSound);
                         player.bounce(0.8f);
                     } else if (boss.canHurtPlayer() && invulnTimer <= 0f) {
                         tomarDanoDeInimigo();
@@ -634,6 +683,7 @@ public class GameScreen implements Screen, InputProcessor {
                 if (boss.isDead() && !bossScored) {
                     bossScored = true;
                     levelScore += POINTS_BOSS;
+                    Audio.stopMusic();   // o Boss caiu: silêncio até ao portal
                 }
             }
 
@@ -747,9 +797,10 @@ public class GameScreen implements Screen, InputProcessor {
     // Som ao perder uma vida: "hurt" se ainda tem vidas, "death" se foi a última
     private void tocarSomDeDano() {
         if (lives <= 0) {
-            deathSound.play();
+            Audio.stopMusic();
+            tocarSom(deathSound);
         } else {
-            hurtSound.play();
+            tocarSom(hurtSound);
         }
     }
 
@@ -795,6 +846,7 @@ public class GameScreen implements Screen, InputProcessor {
             pendingScreen = new GameScreen(game, nextLevel, totalScore());
         } else {
             showingVictory = true; // acabou o último nível: ecrã de vitória
+            Audio.playMusic("audio/music/victory.ogg", false);
         }
     }
 
@@ -872,6 +924,7 @@ public class GameScreen implements Screen, InputProcessor {
         createCoins();
         createEnemies();
         createBoss();
+        Audio.playMusic(levelMusicPath(), true);   // recomeça a música do nível
     }
 
     // Toques nos botões dos menus (só um toque novo por vez, não repete enquanto o dedo está pousado)
@@ -961,7 +1014,7 @@ public class GameScreen implements Screen, InputProcessor {
         jumpWasDown = jumpDown;
 
         if (jumpDown && player.jump(jumpPressed)) {
-            jumpSound.play();
+            tocarSom(jumpSound);
         }
     }
 
@@ -1193,10 +1246,10 @@ public class GameScreen implements Screen, InputProcessor {
         batch.dispose();
         font.dispose();
         menuFont.dispose();
-        jumpSound.dispose();
-        coinSound.dispose();
-        hurtSound.dispose();
-        deathSound.dispose();
+        for (Sound snd : new Sound[] {jumpSound, coinSound, hurtSound, deathSound,
+            enemyDefeatedSound, bossHitSound, levelCompleteSound}) {
+            if (snd != null) snd.dispose();
+        }
         player.dispose();
         backgroundTexture.dispose();
         coinTexture.dispose();
