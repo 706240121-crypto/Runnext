@@ -30,6 +30,8 @@ import com.sidney.runnext.Settings;
 import com.sidney.runnext.entities.Boss;
 import com.sidney.runnext.entities.Coin;
 import com.sidney.runnext.entities.Enemy;
+import com.sidney.runnext.entities.FallingRock;
+import com.sidney.runnext.entities.MovingPlatform;
 import com.sidney.runnext.entities.PatrolEnemy;
 import com.sidney.runnext.entities.Player;
 import com.sidney.runnext.entities.Spike;
@@ -72,7 +74,16 @@ public class GameScreen implements Screen, InputProcessor {
     // Layout das águas de cada nível: {x, largura, x, largura, ...}
     // ATENÇÃO: a personagem salta no máximo ~200 px. Não ponha larguras acima de ~190.
     private static final float[] WATER_LAYOUT_PADRAO = {800, 120, 2000, 160, 3300, 180};
-    private static final float[] WATER_LAYOUT_NIVEL_2 = {650, 150, 1100, 170, 1650, 160, 2250, 180, 2900, 170};
+    private static final float[] WATER_LAYOUT_NIVEL_2 = {650, 150, 1100, 170, 1650, 160, 2250, 180, 2900, 170, 3780, 230};
+
+    // Plataformas móveis do nível 2: {x mais à esquerda, x mais à direita, largura, velocidade em px/s}
+    // A última água (3780, largura 230) é larga demais para um salto normal: é preciso apanhar a plataforma.
+    private static final float[][] MOVING_PLATFORMS_NIVEL_2 = {
+        {3750, 3920, 120, 55}
+    };
+
+    // Pedras que caem no nível 2: x do centro de cada uma
+    private static final float[] ROCKS_NIVEL_2 = {960, 2020, 3160};
     // Nível 3 (castelo): 3 águas e depois um chão comprido (obstáculos e a arena do Boss)
     private static final float[] WATER_LAYOUT_NIVEL_3 = {650, 150, 1300, 170, 2000, 180};
 
@@ -165,6 +176,9 @@ public class GameScreen implements Screen, InputProcessor {
     private final Array<Rectangle> platforms = new Array<>(); // plataformas flutuantes
     private final Array<Enemy> enemies = new Array<>();
     private final Array<Spike> spikes = new Array<>();   // obstáculos que tiram vida
+    private final Array<MovingPlatform> movingPlatforms = new Array<>();
+    private final Array<FallingRock> rocks = new Array<>();
+    private MovingPlatform ridingPlatform = null;        // plataforma móvel em que a personagem está em cima
     private Boss boss = null;                            // só existe no nível 3
     private Texture bossTexture = null;
     private boolean bossScored = false;
@@ -303,6 +317,8 @@ public class GameScreen implements Screen, InputProcessor {
 
         createPlatforms();
         createSpikes();
+        createMovingPlatforms();
+        createRocks();
         createCoins();
 
         for (String path : ENEMY_SPRITES) {
@@ -392,6 +408,33 @@ public class GameScreen implements Screen, InputProcessor {
                 spikes.add(new Spike(cfg[0], GROUND_TOP, cfg[1]));
             }
         }
+    }
+
+    private void createMovingPlatforms() {
+        movingPlatforms.clear();
+        ridingPlatform = null;
+        if (level == 2) {
+            for (float[] cfg : MOVING_PLATFORMS_NIVEL_2) {
+                movingPlatforms.add(new MovingPlatform(cfg[0], cfg[1], cfg[2], GROUND_TOP, cfg[3]));
+            }
+        }
+    }
+
+    private void createRocks() {
+        rocks.clear();
+        if (level == 2) {
+            for (float rx : ROCKS_NIVEL_2) {
+                rocks.add(new FallingRock(rx, GROUND_TOP));
+            }
+        }
+    }
+
+    // A plataforma móvel que está por baixo desta posição horizontal (ou null)
+    private MovingPlatform movingPlatformAt(float x) {
+        for (MovingPlatform mp : movingPlatforms) {
+            if (mp.contains(x)) return mp;
+        }
+        return null;
     }
 
     private void createBoss() {
@@ -551,6 +594,10 @@ public class GameScreen implements Screen, InputProcessor {
             }
         } else if (!isPaused && !isLevelComplete && !isGameOver) {
             float prevFootY = player.getFootY(); // posição dos pés antes do update
+
+            // Plataformas móveis: movem-se e levam consigo a personagem que está em cima
+            for (MovingPlatform mp : movingPlatforms) mp.update(delta);
+            if (ridingPlatform != null) player.setX(player.getX() + ridingPlatform.getDeltaX());
             player.update(delta);
             stateTime += delta;
 
@@ -567,12 +614,17 @@ public class GameScreen implements Screen, InputProcessor {
 
             boolean landed = false;
 
+            MovingPlatform mpUnder = movingPlatformAt(feetX);
+            boolean overGround = isOverGround(feetX);
+
             if (player.getVelocityY() <= 0 && prevFootY >= groundLevel - 1f && player.getFootY() <= groundLevel) {
-                if (isOverGround(feetX)) {
+                if (overGround || mpUnder != null) {
                     player.landOn(groundLevel);
                     landed = true;
                 }
             }
+            // só é "levada" se estiver em cima da plataforma móvel e não em chão firme
+            ridingPlatform = (landed && mpUnder != null && !overGround) ? mpUnder : null;
 
             // Plataformas flutuantes: pousa-se vindo de CIMA; por BAIXO não se passa (bate e perde vida)
             for (Rectangle pl : platforms) {
@@ -657,6 +709,17 @@ public class GameScreen implements Screen, InputProcessor {
                         tomarDanoDeInimigo();
                         break;
                     }
+                }
+            }
+
+            // Pedras que caem: caem quando a personagem se aproxima; quem for apanhado leva dano
+            float centroPedras = playerBody.x + playerBody.width / 2f;
+            for (FallingRock rock : rocks) {
+                rock.update(delta, centroPedras);
+                if (!isGameOver && rock.isDangerous() && invulnTimer <= 0f
+                    && getPlayerHurtBox().overlaps(rock.getBounds())) {
+                    rock.hit();
+                    tomarDanoDeInimigo();
                 }
             }
 
@@ -758,6 +821,12 @@ public class GameScreen implements Screen, InputProcessor {
         }
         for (Spike sp : spikes) {
             sp.render(shapeRenderer);
+        }
+        for (MovingPlatform mp : movingPlatforms) {
+            mp.render(shapeRenderer);
+        }
+        for (FallingRock rock : rocks) {
+            rock.render(shapeRenderer);
         }
 
         // Portal de saída (nos níveis com Boss só aparece depois de o derrotar)
@@ -869,6 +938,8 @@ public class GameScreen implements Screen, InputProcessor {
             }
             player.setX(idx == 0 ? 100f : waters[idx].x - 100f);
             player.setY(GROUND_TOP);
+            invulnTimer = INVULNERABLE_TIME;   // protegida um instante ao voltar
+            ridingPlatform = null;
         }
     }
 
@@ -924,6 +995,8 @@ public class GameScreen implements Screen, InputProcessor {
         createCoins();
         createEnemies();
         createBoss();
+        createMovingPlatforms();
+        createRocks();
         Audio.playMusic(levelMusicPath(), true);   // recomeça a música do nível
     }
 
