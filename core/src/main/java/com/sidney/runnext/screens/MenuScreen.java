@@ -15,15 +15,16 @@ import com.badlogic.gdx.utils.viewport.Viewport;
 import com.sidney.runnext.Audio;
 import com.sidney.runnext.Progress;
 import com.sidney.runnext.Settings;
+import com.sidney.runnext.ShareHandler; // ✅ 1. NOVO: Importar a interface
 
 public class MenuScreen implements Screen {
 
-    // Os 3 ecrãs do menu
-    private static final int STATE_MAIN = 0;      // JOGAR / OPÇÕES / SAIR
-    private static final int STATE_LEVELS = 1;    // escolha do nível
-    private static final int STATE_OPTIONS = 2;   // música e sons
+    private static final int STATE_MAIN = 0;
+    private static final int STATE_LEVELS = 1;
+    private static final int STATE_OPTIONS = 2;
 
     private final Game game;
+    private final ShareHandler shareHandler; // ✅ 2. NOVO: Variável para guardar o handler
 
     private final OrthographicCamera camera;
     private final Viewport viewport;
@@ -32,29 +33,28 @@ public class MenuScreen implements Screen {
     private final BitmapFont font;
 
     private int menuState;
-
     private final int maxUnlocked;
 
-    // menu principal
     private final Rectangle btnJogar;
     private final Rectangle btnOpcoes;
     private final Rectangle btnSair;
 
-    // escolha de nível
     private final Rectangle[] btnNivel = new Rectangle[Progress.TOTAL_LEVELS];
     private final Rectangle btnVoltarNiveis;
 
-    // opções
     private final Rectangle btnMusica;
     private final Rectangle btnSons;
     private final Rectangle btnVoltarOpcoes;
 
-    public MenuScreen(Game game) {
-        this(game, STATE_MAIN);
+    // ✅ 3. NOVO: Construtor simplificado que chama o principal
+    public MenuScreen(Game game, ShareHandler shareHandler) {
+        this(game, STATE_MAIN, shareHandler);
     }
 
-    public MenuScreen(Game game, int menuState) {
+    // ✅ 4. MODIFICADO: Construtor principal que recebe e guarda o shareHandler
+    public MenuScreen(Game game, int menuState, ShareHandler shareHandler) {
         this.game = game;
+        this.shareHandler = shareHandler; // Guardamos para passar adiante
         this.menuState = menuState;
 
         camera = new OrthographicCamera();
@@ -81,7 +81,6 @@ public class MenuScreen implements Screen {
 
     @Override
     public void show() {
-        // Garante que nenhum ecrã antigo (já destruído) continua a receber toques
         Gdx.input.setInputProcessor(null);
         Audio.playMusic("audio/music/menu.ogg", true);
     }
@@ -102,7 +101,6 @@ public class MenuScreen implements Screen {
             renderOpcoes();
         }
 
-        // Tem de ser a ÚLTIMA coisa do render: pode trocar de ecrã e destruir este.
         if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)) {
             if (menuState == STATE_MAIN) menuState = STATE_LEVELS;
             else if (menuState == STATE_LEVELS) iniciarNivel(1);
@@ -150,7 +148,6 @@ public class MenuScreen implements Screen {
         boolean musica = Settings.isMusicOn();
         boolean sons = Settings.isSfxOn();
 
-        // azul = ligado, cinzento = desligado
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         MenuStyle.drawButton(shapeRenderer, btnMusica, musica);
         MenuStyle.drawButton(shapeRenderer, btnSons, sons);
@@ -194,7 +191,7 @@ public class MenuScreen implements Screen {
         } else {
             if (btnMusica.contains(x, y)) {
                 Settings.setMusicOn(!Settings.isMusicOn());
-                Audio.applyMusicSetting();   // liga ou desliga logo a música que está a tocar
+                Audio.applyMusicSetting();
             } else if (btnSons.contains(x, y)) {
                 Settings.setSfxOn(!Settings.isSfxOn());
             } else if (btnVoltarOpcoes.contains(x, y)) {
@@ -203,8 +200,9 @@ public class MenuScreen implements Screen {
         }
     }
 
+    // ✅ 5. MODIFICADO: Agora passa o shareHandler (e score inicial 0) para o GameScreen
     private void iniciarNivel(int nivel) {
-        game.setScreen(new GameScreen(game, nivel));
+        game.setScreen(new GameScreen(game, nivel, 0, shareHandler));
         dispose();
     }
 
